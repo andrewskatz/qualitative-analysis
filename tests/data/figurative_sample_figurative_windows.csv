@@ -1,0 +1,25 @@
+text_id,window_index,window_text,has_figurative,confidence,instances_count,summary
+fig_1,0,"Her voice was velvet, smoothing the rough edges of the room.",True,0.95,2,"- The text uses a metaphor to describe a voice as 'velvet,' emphasizing its smooth, soothing quality.
+- The comparison suggests the voice has a calming, comforting effect, softening harsh or tense environments.
+- The imagery evokes a sensory experience, blending sound and texture to convey emotional impact."
+fig_2,0,"The plan was a lighthouse in the storm, guiding us when the budget seas grew rough.",True,0.98,2,"- The text uses a metaphor comparing a plan to a lighthouse, symbolizing guidance and stability.
+- The 'budget seas' metaphor represents financial challenges or uncertainty.
+- The overall tone is figurative and evocative, emphasizing the plan's crucial role during difficult times."
+fig_3,0,"By winter the project had taken root, and by spring it bore fruit across the region.",True,0.95,2,"- The project, which began developing in winter, showed significant progress and impact by spring.
+- It had a broad regional effect, indicating widespread success and reach.
+- The metaphorical language suggests growth, development, and positive outcomes over time."
+fig_4,0,"""The startup planted a seed in a crowded market. Over the next year, it grew roots through patient partnerships, and by spring it was bearing fruit in new regions. Investors said the company had finally found its sunlight.""",True,0.95,4,"- The startup established itself in a competitive market by forming strategic, patient partnerships.
+- Over time, it expanded its reach and achieved measurable success, evidenced by growth in new regions.
+- Investors viewed its progress as a sign of sustainable success, likening its trajectory to finding 'sunlight' after a period of development."
+lit_1,0,The meeting starts at 3 PM and will last 30 minutes.,False,0.98,0,"- The meeting is scheduled to begin at 3 PM and will last for 30 minutes.
+- The primary focus is on the timing and duration of the meeting.
+- No specific topics, participants, or locations are mentioned."
+lit_2,0,"The report summarizes quarterly revenue, operating expenses, and headcount for the last year.",False,0.95,0,"- The report provides a financial overview of the past year, focusing on quarterly revenue and operating expenses.
+- Key metrics include revenue performance and cost management across four quarters.
+- Headcount data is also included, indicating workforce size trends over the year."
+lit_3,0,"After QA testing, the release is scheduled for September with updated documentation and training.",False,0.95,0,"- The software release is scheduled for September following successful QA testing.
+- Updated documentation and training materials will accompany the release.
+- The focus is on ensuring readiness and user preparedness through comprehensive updates."
+lit_4,0,"""The report summarizes quarterly revenue, operating expenses, and headcount. It notes that research costs increased by 8% due to new laboratory equipment. The next release is scheduled for September after additional QA testing.""",False,0.95,0,"- The report outlines quarterly financial performance, including revenue, operating expenses, and headcount.
+- Research costs rose by 8% primarily due to the acquisition of new laboratory equipment.
+- The next report release is planned for September following additional quality assurance testing."

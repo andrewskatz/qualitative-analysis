@@ -1,0 +1,9 @@
+text_id,text,contains_figurative,confidence,instance_count,window_count,strategy,error
+fig_1,"Her voice was velvet, smoothing the rough edges of the room.",True,0.925,2,1,two_step_with_summaries,
+fig_2,"The plan was a lighthouse in the storm, guiding us when the budget seas grew rough.",True,0.965,2,1,two_step_with_summaries,
+fig_3,"By winter the project had taken root, and by spring it bore fruit across the region.",True,0.965,2,1,two_step_with_summaries,
+fig_4,"""The startup planted a seed in a crowded market. Over the next year, it grew roots through patient partnerships, and by spring it was bearing fruit in new regions. Investors said the company had finally found its sunlight.""",True,0.9724999999999999,4,1,two_step_with_summaries,
+lit_1,The meeting starts at 3 PM and will last 30 minutes.,False,0.0,0,1,two_step_with_summaries,
+lit_2,"The report summarizes quarterly revenue, operating expenses, and headcount for the last year.",False,0.0,0,1,two_step_with_summaries,
+lit_3,"After QA testing, the release is scheduled for September with updated documentation and training.",False,0.0,0,1,two_step_with_summaries,
+lit_4,"""The report summarizes quarterly revenue, operating expenses, and headcount. It notes that research costs increased by 8% due to new laboratory equipment. The next release is scheduled for September after additional QA testing.""",False,0.0,0,1,two_step_with_summaries,

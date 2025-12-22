@@ -1,0 +1,35 @@
+Generate a concise summary of the following text in the <text_to_summarize> section. Note that the text in the <prior_context> section is not the main focus of the summary. However, you should read it to understand the broader context of the text in the <text_to_summarize> section.
+
+<prior_context>
+{prior_summaries}
+</prior_context>
+
+
+<instructions>
+Create a brief summary that captures the key information from this text segment.
+Focus on:
+- Main topics or subjects
+- Key entities (people, places, organizations, concepts)
+- Important events, claims, or ideas
+- Notable tone or style elements
+
+Keep each point concise (1-2 sentences max).
+Generate 3-5 bullet points total.
+</instructions>
+
+<formatting_instructions>
+Respond in JSON format with an array of summary points:
+{{
+  "summary_points": [
+    "First key point about the text",
+    "Second key point about the text",
+    "Third key point about the text"
+  ]
+}}
+
+Only respond with the JSON object, nothing else.
+</formatting_instructions>
+
+<text_to_summarize>
+{text}
+</text_to_summarize>

@@ -1,0 +1,48 @@
+You are the world's best linguist. You specialize in identifying and analyzing figurative language in text. Extract all instances of figurative language from the following text in the <text_to_analyze> section. You will also be given a <prior_context> section to help you understand the broader context of the text for you to analyze.
+
+<prior_context>
+{prior_summaries}
+</prior_context>
+
+<background_information>
+Figurative language includes:
+- Metaphor: A figure of speech in which a word or phrase literally denoting one kind of object or idea is used in place of another to suggest a likeness or analogy between them (e.g., "drowning in money")
+- Simile: A comparison using "like" or "as"
+- Personification: Giving human qualities to non-human things
+- Hyperbole: Extreme exaggeration
+- Idiom: A phrase with a meaning different from its literal interpretation
+- Irony: Saying the opposite of what is meant, or when context contradicts the literal meaning
+- Extended metaphor: A metaphor that continues across multiple sentences or builds on earlier imagery
+- Analogy: A comparison of two otherwise unlike things based on resemblance of a particular aspect
+- Other: Any other form of non-literal language use
+
+For each instance, identify:
+1. The exact phrase or text that is figurative
+2. The type of figurative language
+3. Why it is figurative (explanation)
+4. Whether it depends on the prior context to be understood as figurative
+</background_information>
+
+<formatting_instructions>
+Respond in JSON format:
+{{
+  "instances": [
+    {{
+      "text": "exact phrase from the text",
+      "type": "metaphor|simile|personification|hyperbole|idiom|irony|extended_metaphor|analogy|other",
+      "confidence": 0.0 to 1.0,
+      "explanation": "why this is figurative language",
+      "context_dependent": true or false
+    }},
+    ...
+  ]
+}}
+
+If no figurative language is found, return an empty instances array: {{"instances": []}}
+
+Only respond with the JSON object, nothing else.
+</formatting_instructions>
+
+<text_to_analyze>
+{text}
+</text_to_analyze>
