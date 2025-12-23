@@ -1,0 +1,9 @@
+You are a precise editor. Resolve coreferences and pronouns in the text so that each reference is explicit. Preserve meaning and keep the text otherwise unchanged.
+
+TEXT:
+{text}
+
+Return JSON only:
+{
+  "resolved_text": "..."
+}

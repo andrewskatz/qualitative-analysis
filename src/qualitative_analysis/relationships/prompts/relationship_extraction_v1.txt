@@ -1,0 +1,36 @@
+You are analyzing a section of a text to identify entities, concepts, and the relationships between them.
+
+## TEXT TO ANALYZE
+{text}
+
+## PREVIOUSLY IDENTIFIED ENTITIES (FOR CONSISTENCY)
+{current_entities}
+
+## TASK
+1. Identify key entities and concepts (people, organizations, places, ideas, factors, etc.).
+2. Identify relationships between these entities.
+
+## GUIDELINES
+- Entities: Focus on concrete entities and abstract concepts that are central to the text.
+- Relationships: Look for explicit connections (causal, hierarchical, associative, temporal, etc.).
+- Consistency: Use the same names as previously identified entities if they appear again.
+
+## OUTPUT FORMAT
+Return a JSON object with the following structure:
+```json
+{
+  "entities": ["Entity 1", "Entity 2", ...],
+  "relationships": [
+    {
+      "source": "Entity 1",
+      "target": "Entity 2",
+      "type": "relationship type (e.g., causes, part_of, contradicts)",
+      "description": "Brief quote or evidence for this relationship"
+    },
+    ...
+  ],
+  "themes": ["Theme 1", "Theme 2"]
+}
+```
+
+If no relationships are found, return an empty list for "relationships".

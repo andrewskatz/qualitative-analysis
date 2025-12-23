@@ -21,7 +21,8 @@ class SlidingWindowProcessor(TextProcessor):
         self,
         window_size: int = 3,
         stride: int = 2,
-        chunk_unit: str = 'sentences'
+        chunk_unit: str = 'sentences',
+        tokenizer_name: str = "cl100k_base",
     ):
         """
         Initialize sliding window processor.
@@ -34,6 +35,8 @@ class SlidingWindowProcessor(TextProcessor):
         self.window_size = window_size
         self.stride = stride
         self.chunk_unit = chunk_unit
+        self.tokenizer_name = tokenizer_name
+        self._tokenizer = None
     
     def process(self, text: str) -> List[str]:
         """
@@ -48,30 +51,31 @@ class SlidingWindowProcessor(TextProcessor):
         if not text or not text.strip():
             return []
 
-        # TODO: Implement token-based if needed. For now, assume sentences.
         if self.chunk_unit == 'tokens':
-             # Placeholder for token logic
-             raise NotImplementedError("Token-based chunking not yet implemented in generic module.")
+            units = self._encode_tokens(text)
+            joiner = self._decode_tokens
+        elif self.chunk_unit == 'sentences':
+            units = self._split_sentences(text)
+            joiner = lambda items: ' '.join(items)
+        else:
+            raise ValueError(f"Unsupported chunk_unit: {self.chunk_unit}")
 
-        # Default: sentence-based
-        sentences = self._split_sentences(text)
-
-        if len(sentences) <= self.window_size:
+        if len(units) <= self.window_size:
             return [text]
 
         windows = []
-        for i in range(0, len(sentences) - self.window_size + 1, self.stride):
-            window_sentences = sentences[i:i + self.window_size]
-            window_text = ' '.join(window_sentences)
+        for i in range(0, len(units) - self.window_size + 1, self.stride):
+            window_units = units[i:i + self.window_size]
+            window_text = joiner(window_units)
             windows.append(window_text)
 
         # Handle last chunk
         last_window_start = (len(windows) - 1) * self.stride if windows else 0
         last_window_end = last_window_start + self.window_size
 
-        if last_window_end < len(sentences):
-            final_window_sentences = sentences[-self.window_size:]
-            final_window_text = ' '.join(final_window_sentences)
+        if last_window_end < len(units):
+            final_window_units = units[-self.window_size:]
+            final_window_text = joiner(final_window_units)
             if not windows or final_window_text != windows[-1]:
                 windows.append(final_window_text)
 
@@ -82,3 +86,25 @@ class SlidingWindowProcessor(TextProcessor):
         # This is a naive implementation. In a real module, use nltk or spacy.
         # For portability, we'll strive for regex-based for now.
         return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+
+    def _get_tokenizer(self):
+        if self._tokenizer is None:
+            try:
+                import tiktoken
+            except ImportError as exc:
+                raise ImportError(
+                    "Token-based chunking requires tiktoken. "
+                    "Install it with `pip install tiktoken`."
+                ) from exc
+            self._tokenizer = tiktoken.get_encoding(self.tokenizer_name)
+        return self._tokenizer
+
+    def _encode_tokens(self, text: str) -> List[int]:
+        """Tokenize text into model token IDs."""
+        tokenizer = self._get_tokenizer()
+        return tokenizer.encode(text)
+
+    def _decode_tokens(self, tokens: List[int]) -> str:
+        """Decode token IDs into text."""
+        tokenizer = self._get_tokenizer()
+        return tokenizer.decode(tokens)

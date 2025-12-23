@@ -27,6 +27,8 @@ class FigurativeDetector:
         # Text processor config
         window_size: int = 3,
         stride: int = 2,
+        chunk_unit: str = "sentences",
+        tokenizer_name: str = "cl100k_base",
         # Dependency Injection
         llm_provider: Optional[BaseLLMProvider] = None
     ):
@@ -47,7 +49,9 @@ class FigurativeDetector:
         # 2. Setup Text Processor
         self.text_processor = SlidingWindowProcessor(
             window_size=window_size,
-            stride=stride
+            stride=stride,
+            chunk_unit=chunk_unit,
+            tokenizer_name=tokenizer_name,
         )
         
         # 3. Setup Strategy

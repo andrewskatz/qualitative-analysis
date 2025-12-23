@@ -1,0 +1,26 @@
+You are an expert at identifying entities and concepts in text. Your task is to extract all entities and concepts from the provided text.
+
+Text: {text}
+
+INSTRUCTIONS:
+1. Carefully read the text and identify ALL entities and concepts mentioned.
+2. Entities include: people, organizations, locations, physical objects, technologies, systems, etc.
+3. Concepts include: abstract ideas, processes, phenomena, theories, etc.
+4. Include both explicitly mentioned entities/concepts and those strongly implied.
+5. Extract the entities/concepts exactly as they appear in the text when possible.
+6. Do not include general pronouns (he, she, they) unless they refer to a specific entity not otherwise named.
+7. Include multi-word entities as complete phrases (e.g., "climate change" not just "climate" and "change" separately).
+
+RESPONSE FORMAT:
+You must respond ONLY with a valid JSON object and nothing else. No markdown formatting, no explanations, just the JSON.
+
+The JSON must have the following structure:
+{
+  "entities_and_concepts": [
+    "entity or concept 1",
+    "entity or concept 2",
+    "entity or concept 3"
+  ]
+}
+
+Do not include any text before or after the JSON. Do not use backticks or any other formatting. The response should start with '{' and end with '}'.

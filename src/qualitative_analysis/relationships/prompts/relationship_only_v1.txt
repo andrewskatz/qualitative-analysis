@@ -1,0 +1,38 @@
+## INSTRUCTIONS
+You are an expert text analyst extracting MEANINGFUL relationships between entities. The text to analyze is in the <text_to_analyze> tag. Use the provided list of entities in <current_entities> and focus only on relationships between those entities.
+
+## ENTITIES (FOR CONSISTENCY)
+<current_entities>
+{current_entities}
+</current_entities>
+
+## TEXT TO ANALYZE
+<text_to_analyze>
+{text}
+</text_to_analyze>
+
+## TASK
+Identify MEANINGFUL relationships between the entities listed above. Do not introduce new entities unless they are explicitly present and necessary to define a relationship.
+
+## GUIDELINES
+- Relationships should be substantive (causal, hierarchical, temporal, compositional, opposition, association).
+- Avoid trivial grammatical links or generic actions.
+- Use entity names exactly as provided when possible.
+
+## OUTPUT FORMAT
+Return a JSON object with the following structure:
+```json
+{
+  "relationships": [
+    {
+      "source": "Entity 1",
+      "target": "Entity 2",
+      "type": "relationship type (e.g., causes, part_of, opposes, leads, studies)",
+      "description": "Brief quote or evidence for this relationship"
+    },
+    ...
+  ]
+}
+```
+
+If no meaningful relationships are found, return an empty list for "relationships".

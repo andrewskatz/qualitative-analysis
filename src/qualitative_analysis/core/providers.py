@@ -52,10 +52,10 @@ class OllamaProvider(BaseLLMProvider):
             payload["format"] = fmt
 
         if self.log_prompts:
-            print("\n[LLM SYSTEM PROMPT]")
-            print(system_prompt or "")
-            print("\n[LLM USER PROMPT]")
-            print(prompt)
+            print("\n[LLM SYSTEM PROMPT]", flush=True)
+            print(system_prompt or "", flush=True)
+            print("\n[LLM USER PROMPT]", flush=True)
+            print(prompt, flush=True)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
@@ -67,8 +67,8 @@ class OllamaProvider(BaseLLMProvider):
 
         content = data["message"]["content"]
         if self.log_responses:
-            print("\n[LLM RESPONSE]")
-            print(content)
+            print("\n[LLM RESPONSE]", flush=True)
+            print(content, flush=True)
 
         return content
 

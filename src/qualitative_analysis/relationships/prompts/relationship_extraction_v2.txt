@@ -1,0 +1,57 @@
+## INSTRUCTIONS
+You are an expert text analyst analyzing a section of a text to identify entities, concepts, and the MEANINGFUL relationships between them. The text to analyze is given in the <text_to_analyze> tag. You are also given a list of entities that have already been identified in the <current_entities> tag.
+
+## PREVIOUSLY IDENTIFIED ENTITIES (FOR CONSISTENCY)
+<current_entities>
+{current_entities}
+</current_entities>
+
+## TEXT TO ANALYZE
+<text_to_analyze>
+{text}
+</text_to_analyze>
+
+## TASK
+1. Identify key entities and concepts (people, organizations, places, ideas, factors, events, etc.) in the <text_to_analyze> tag.
+2. Identify MEANINGFUL relationships between these entities.
+
+## WHAT IS A MEANINGFUL RELATIONSHIP?
+A meaningful relationship represents a substantive connection between entities that conveys important information about how they interact, influence each other, or are related conceptually.
+
+MEANINGFUL relationships include:
+- Causal: "rain" -> causes -> "flooding"
+- Hierarchical: "CEO" -> leads -> "company"
+- Temporal: "harvest" -> follows -> "planting"
+- Compositional: "chapter" -> part_of -> "book"
+- Opposition: "unions" -> opposes -> "management"
+- Association: "researcher" -> studies -> "climate change"
+
+NON-meaningful relationships to avoid:
+- NO: Subject-verb: "He" -> "ran" (trivial grammar, not meaningful)
+- NO: Verb-adverb: "ran" -> "far" (trivial modification)
+- NO: Generic actions without context: "person" -> "moved"
+- NO: Pronouns as entities: "it", "they", "he" (unless referring to specific named entities)
+
+## GUIDELINES
+- Entities: Focus on concrete entities (people, places, organizations, objects) and abstract concepts (ideas, theories, phenomena) that are central to the text.
+- Relationships: Only extract relationships that provide meaningful semantic information. Skip grammatical relationships.
+- Consistency: Use the same names as previously identified entities if they appear again.
+
+## OUTPUT FORMAT
+Return a JSON object with the following structure:
+```json
+{
+  "entities": ["Entity 1", "Entity 2", ...],
+  "relationships": [
+    {
+      "source": "Entity 1",
+      "target": "Entity 2",
+      "type": "relationship type (e.g., causes, part_of, opposes, leads, studies)",
+      "description": "Brief quote or evidence for this relationship"
+    },
+    ...
+  ]
+}
+```
+
+If no meaningful relationships are found, return an empty list for "relationships".

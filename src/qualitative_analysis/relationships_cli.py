@@ -1,5 +1,5 @@
 """
-CLI for running figurative language detection on CSV files.
+CLI for running relationship extraction on CSV files.
 """
 
 from __future__ import annotations
@@ -7,50 +7,83 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import json
 from pathlib import Path
-from typing import Any, Dict, Iterable
+from typing import Any, List
 
-from qualitative_analysis.figurative.detector import FigurativeDetector
+from qualitative_analysis.relationships.detector import RelationshipDetector
 
 OUTPUT_CHOICES = {
     "summary",
-    "instances",
+    "relationships",
     "windows",
-    "summary+instances",
+    "summary+relationships",
     "summary+windows",
-    "instances+windows",
-    "summary+instances+windows",
+    "relationships+windows",
+    "summary+relationships+windows",
     "all",
 }
 
 
 def _parse_output_selection(value: str) -> set[str]:
     if value == "all":
-        return {"summary", "instances", "windows"}
+        return {"summary", "relationships", "windows"}
     parts = value.split("+")
-    invalid = [part for part in parts if part not in {"summary", "instances", "windows"}]
+    invalid = [
+        part for part in parts if part not in {"summary", "relationships", "windows"}
+    ]
     if invalid:
         raise ValueError(f"Invalid output selection: {value}")
     return set(parts)
 
 
+def _parse_entities(raw_value: str | None) -> List[str]:
+    if not raw_value:
+        return []
+    value = raw_value.strip()
+    if not value:
+        return []
+    if value.startswith("["):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        except json.JSONDecodeError:
+            pass
+    delimiter = ";" if ";" in value else ","
+    if delimiter in value:
+        return [part.strip() for part in value.split(delimiter) if part.strip()]
+    return [value]
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run figurative language detection on a CSV file."
+        description="Run relationship extraction on a CSV file."
     )
     parser.add_argument("input_csv", help="Path to input CSV file.")
     parser.add_argument("--id-col", default=None, help="Column name for IDs (optional).")
     parser.add_argument("--text-col", default="text", help="Column name for text.")
     parser.add_argument(
+        "--entities-col",
+        default=None,
+        help="Column name for pre-identified entities (optional).",
+    )
+    parser.add_argument(
         "--output",
         default="summary",
         choices=sorted(OUTPUT_CHOICES),
-        help="Output format: summary, instances, windows, combinations, or all.",
+        help="Output format: summary, relationships, windows, combinations, or all.",
     )
     parser.add_argument(
         "--output-dir",
         default=None,
         help="Output directory (default: alongside input CSV).",
+    )
+    parser.add_argument(
+        "--strategy",
+        default="two_pass",
+        choices=["two_pass", "one_pass"],
+        help="Relationship extraction strategy (default: two_pass).",
     )
     parser.add_argument("--model", default="qwen3:30b-a3b-instruct-2507-q4_K_M", help="Ollama model name.")
     parser.add_argument(
@@ -78,12 +111,56 @@ def _parse_args() -> argparse.Namespace:
         help="Tokenizer name for token chunking (tiktoken encoding).",
     )
     parser.add_argument(
+        "--summary-buffer-size",
+        type=int,
+        default=5,
+        help="Number of window summaries to keep for context.",
+    )
+    parser.add_argument(
+        "--summary-prompt-version",
+        type=int,
+        default=1,
+        help="Window summary prompt version.",
+    )
+    parser.add_argument(
+        "--include-summaries",
+        action="store_true",
+        help="Include window summaries in relationship prompts.",
+    )
+    parser.add_argument(
         "--no-windowing",
         action="store_true",
         help="Disable windowing and analyze each text as a single window.",
     )
-    parser.add_argument("--threshold", type=float, default=0.5, help="Detection threshold.")
-    parser.add_argument("--prompt-version", type=int, default=1, help="Prompt version.")
+    parser.add_argument(
+        "--prompt-version",
+        type=int,
+        default=None,
+        help="Relationship prompt version (strategy-dependent).",
+    )
+    parser.add_argument(
+        "--entity-prompt-version",
+        type=int,
+        default=3,
+        help="Entity extraction prompt version (two-pass only).",
+    )
+    parser.add_argument(
+        "--context-buffer-size",
+        type=int,
+        default=0,
+        help="Number of prior windows to keep for entity context (0 disables).",
+    )
+    parser.add_argument(
+        "--coref",
+        action="store_true",
+        help="Enable LLM-based coreference resolution before extraction.",
+    )
+    parser.add_argument(
+        "--coref-prompt-version",
+        type=int,
+        default=1,
+        help="Coreference resolution prompt version.",
+    )
     return parser.parse_args()
 
 
@@ -102,18 +179,20 @@ def _writer(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, Any]:
 
 async def _run() -> int:
     args = _parse_args()
+    if args.prompt_version is None:
+        args.prompt_version = 1 if args.strategy == "two_pass" else 2
     input_path = Path(args.input_csv)
     if not input_path.exists():
         raise SystemExit(f"Input CSV not found: {input_path}")
 
     output_selection = _parse_output_selection(args.output)
     write_summary = "summary" in output_selection
-    write_instances = "instances" in output_selection
+    write_relationships = "relationships" in output_selection
     write_windows = "windows" in output_selection
 
     output_dir = _resolve_output_dir(input_path, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_prefix = f"{input_path.stem}_figurative"
+    output_prefix = f"{input_path.stem}_relationships"
 
     window_size = args.window_size
     stride = args.stride
@@ -121,7 +200,7 @@ async def _run() -> int:
         window_size = 1_000_000
         stride = 1_000_000
 
-    detector = FigurativeDetector(
+    detector = RelationshipDetector(
         model_name=args.model,
         provider="ollama",
         provider_config={
@@ -130,20 +209,27 @@ async def _run() -> int:
             "log_prompts": args.log_llm,
             "log_responses": args.log_llm,
         },
-        strategy="two_step",
-        threshold=args.threshold,
+        strategy=args.strategy,
         prompt_version=args.prompt_version,
+        entity_prompt_version=args.entity_prompt_version,
+        relationship_prompt_version=args.prompt_version,
+        coref_prompt_version=args.coref_prompt_version,
         window_size=window_size,
         stride=stride,
         chunk_unit=args.chunk_unit,
         tokenizer_name=args.tokenizer,
+        summary_buffer_size=args.summary_buffer_size,
+        summary_prompt_version=args.summary_prompt_version,
+        include_summaries_in_prompt=args.include_summaries,
         return_windows=write_windows,
+        context_buffer_size=args.context_buffer_size,
+        coref_resolution=args.coref,
     )
 
     summary_writer = None
     summary_handle = None
-    instances_writer = None
-    instances_handle = None
+    relationships_writer = None
+    relationships_handle = None
     windows_writer = None
     windows_handle = None
 
@@ -154,29 +240,26 @@ async def _run() -> int:
             [
                 "text_id",
                 "text",
-                "contains_figurative",
-                "confidence",
-                "instance_count",
+                "entity_count",
+                "relationship_count",
                 "window_count",
+                "entities_json",
                 "strategy",
                 "error",
             ],
         )
 
-    if write_instances:
-        instances_path = output_dir / f"{output_prefix}_instances.csv"
-        instances_writer, instances_handle = _writer(
-            instances_path,
+    if write_relationships:
+        relationships_path = output_dir / f"{output_prefix}_edges.csv"
+        relationships_writer, relationships_handle = _writer(
+            relationships_path,
             [
                 "text_id",
                 "window_index",
-                "instance_text",
+                "source",
+                "target",
                 "type",
-                "confidence",
-                "explanation",
-                "context_dependent",
-                "start_char",
-                "end_char",
+                "description",
             ],
         )
 
@@ -188,10 +271,10 @@ async def _run() -> int:
                 "text_id",
                 "window_index",
                 "window_text",
-                "has_figurative",
-                "confidence",
-                "instances_count",
                 "summary",
+                "relationship_count",
+                "entities_json",
+                "relationships_json",
             ],
         )
 
@@ -211,14 +294,24 @@ async def _run() -> int:
                     f"ID column '{args.id_col}' not found in CSV headers: {reader.fieldnames}"
                 )
 
+            if args.entities_col and args.entities_col not in reader.fieldnames:
+                raise SystemExit(
+                    f"Entities column '{args.entities_col}' not found in CSV headers: {reader.fieldnames}"
+                )
+
             for index, row in enumerate(reader, start=1):
                 text_id = row.get(args.id_col) if args.id_col else str(index)
                 text = row.get(args.text_col) or ""
+                entities_input = (
+                    _parse_entities(row.get(args.entities_col))
+                    if args.entities_col
+                    else []
+                )
 
                 error = ""
                 result = None
                 try:
-                    result = await detector.detect(text)
+                    result = await detector.detect(text, current_entities=entities_input)
                 except Exception as exc:
                     error = str(exc)
 
@@ -227,28 +320,25 @@ async def _run() -> int:
                         {
                             "text_id": text_id,
                             "text": text,
-                            "contains_figurative": getattr(result, "contains_figurative", ""),
-                            "confidence": getattr(result, "confidence", ""),
-                            "instance_count": len(result.instances) if result else "",
+                            "entity_count": result.metadata.get("entity_count") if result else "",
+                            "relationship_count": result.metadata.get("relationship_count") if result else "",
                             "window_count": result.metadata.get("window_count") if result else "",
+                            "entities_json": json.dumps(result.entities) if result else "",
                             "strategy": result.metadata.get("strategy") if result else "",
                             "error": error,
                         }
                     )
 
-                if result and write_instances and instances_writer:
-                    for instance in result.instances:
-                        instances_writer.writerow(
+                if result and write_relationships and relationships_writer:
+                    for rel in result.relationships:
+                        relationships_writer.writerow(
                             {
                                 "text_id": text_id,
-                                "window_index": getattr(instance, "window_index", ""),
-                                "instance_text": getattr(instance, "text", ""),
-                                "type": getattr(instance, "type", ""),
-                                "confidence": getattr(instance, "confidence", ""),
-                                "explanation": getattr(instance, "explanation", ""),
-                                "context_dependent": getattr(instance, "context_dependent", ""),
-                                "start_char": getattr(instance, "start_char", ""),
-                                "end_char": getattr(instance, "end_char", ""),
+                                "window_index": rel.window_index,
+                                "source": rel.source,
+                                "target": rel.target,
+                                "type": rel.type,
+                                "description": rel.description,
                             }
                         )
 
@@ -259,22 +349,22 @@ async def _run() -> int:
                                 "text_id": text_id,
                                 "window_index": window.get("window_index", ""),
                                 "window_text": window.get("window_text", ""),
-                                "has_figurative": window.get("has_figurative", ""),
-                                "confidence": window.get("confidence", ""),
-                                "instances_count": window.get("instances_count", ""),
                                 "summary": window.get("summary", ""),
+                                "relationship_count": window.get("relationship_count", ""),
+                                "entities_json": json.dumps(window.get("entities", [])),
+                                "relationships_json": json.dumps(window.get("relationships", [])),
                             }
                         )
 
     finally:
-        for handle in [summary_handle, instances_handle, windows_handle]:
+        for handle in [summary_handle, relationships_handle, windows_handle]:
             if handle:
                 handle.close()
 
     if write_summary:
         print(f"Wrote summary CSV: {summary_path}")
-    if write_instances:
-        print(f"Wrote instances CSV: {instances_path}")
+    if write_relationships:
+        print(f"Wrote relationships CSV: {relationships_path}")
     if write_windows:
         print(f"Wrote windows CSV: {windows_path}")
 
