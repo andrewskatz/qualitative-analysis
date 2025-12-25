@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
@@ -113,6 +114,9 @@ async def _run() -> int:
 
     output_dir = _resolve_output_dir(input_path, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+    run_dir = output_dir / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
     output_prefix = f"{input_path.stem}_figurative"
 
     window_size = args.window_size
@@ -148,7 +152,7 @@ async def _run() -> int:
     windows_handle = None
 
     if write_summary:
-        summary_path = output_dir / f"{output_prefix}_summary.csv"
+        summary_path = run_dir / f"{output_prefix}_summary_{timestamp}.csv"
         summary_writer, summary_handle = _writer(
             summary_path,
             [
@@ -164,7 +168,7 @@ async def _run() -> int:
         )
 
     if write_instances:
-        instances_path = output_dir / f"{output_prefix}_instances.csv"
+        instances_path = run_dir / f"{output_prefix}_instances_{timestamp}.csv"
         instances_writer, instances_handle = _writer(
             instances_path,
             [
@@ -181,7 +185,7 @@ async def _run() -> int:
         )
 
     if write_windows:
-        windows_path = output_dir / f"{output_prefix}_windows.csv"
+        windows_path = run_dir / f"{output_prefix}_windows_{timestamp}.csv"
         windows_writer, windows_handle = _writer(
             windows_path,
             [

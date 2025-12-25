@@ -33,4 +33,5 @@ Notes:
 - Use `--strategy one_pass` to run a single-pass relationship extractor.
 - Optional context buffer: `--context-buffer-size N`
 - Optional coreference resolution: `--coref`
-- Optional window summaries: `--include-summaries` and `--summary-buffer-size N`
+- Optional window summaries: `--include-summaries`, `--summary-buffer-size N`, or disable with `--no-summaries`
+- Summary trigger threshold: `--summary-min-windows N` (default: 2)

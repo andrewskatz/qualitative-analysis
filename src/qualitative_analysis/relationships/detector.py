@@ -43,7 +43,9 @@ class RelationshipDetector:
         tokenizer_name: str = "cl100k_base",
         summary_buffer_size: int = 5,
         summary_prompt_version: int = 1,
+        enable_summaries: bool = True,
         include_summaries_in_prompt: bool = False,
+        summary_min_windows: int = 2,
         # Return window-level results
         return_windows: bool = False,
         # Context buffer
@@ -79,7 +81,9 @@ class RelationshipDetector:
         )
         self.summarizer = Summarizer(self.llm, prompt_version=summary_prompt_version)
         self.summary_buffer_size = summary_buffer_size
+        self.enable_summaries = enable_summaries
         self.include_summaries_in_prompt = include_summaries_in_prompt
+        self.summary_min_windows = max(1, summary_min_windows)
         self.return_windows = return_windows
         self.context_buffer = EntityBuffer(context_buffer_size)
         self.coref_resolution = coref_resolution
@@ -102,23 +106,26 @@ class RelationshipDetector:
                 metadata={"strategy": "relationship_extraction", "window_count": 0},
             )
 
-        summary_buffer = SummaryBuffer(self.summary_buffer_size)
+        summaries_enabled = self.enable_summaries and len(windows) >= self.summary_min_windows
+        summary_buffer = SummaryBuffer(self.summary_buffer_size) if summaries_enabled else None
         all_entities: List[str] = []
         all_relationships: List[Relationship] = []
         window_results: List[Dict[str, Any]] = []
 
         for i, window in enumerate(windows):
-            summary = await self.summarizer.summarize(
-                window,
-                summary_buffer.get_context(),
-                window_index=i,
-            )
-            summary_buffer.add(summary)
+            summary = None
             summary_context = None
-            if self.include_summaries_in_prompt:
-                summary_context = summary_buffer.get_formatted_context()
-                if summary_context == "No prior context.":
-                    summary_context = None
+            if summary_buffer is not None:
+                summary = await self.summarizer.summarize(
+                    window,
+                    summary_buffer.get_context(),
+                    window_index=i,
+                )
+                summary_buffer.add(summary)
+                if self.include_summaries_in_prompt:
+                    summary_context = summary_buffer.get_formatted_context()
+                    if summary_context == "No prior context.":
+                        summary_context = None
             entities_seed = self._merge_entities(
                 current_entities or [],
                 self.context_buffer.get_entities(),
@@ -151,7 +158,7 @@ class RelationshipDetector:
                     {
                         "window_index": i,
                         "window_text": window,
-                        "summary": summary.text,
+                        "summary": summary.text if summary else "",
                         "entities": entities,
                         "relationships": [rel.to_dict() for rel in relationships],
                         "relationship_count": len(relationships),

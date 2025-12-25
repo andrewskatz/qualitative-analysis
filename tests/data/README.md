@@ -2,16 +2,16 @@
 
 ## Relationship CLI Outputs
 
-Depending on `--output`, the relationships CLI can emit:
+Depending on `--output`, the relationships CLI can emit inside a `run_YYYYMMDD-HHMM/` subdirectory:
 
-- `*_relationships_summary.csv`
+- `run_YYYYMMDD-HHMM/*_relationships_summary_YYYYMMDD-HHMM.csv`
   - One row per input text.
   - Columns: `text_id`, `text`, `entity_count`, `relationship_count`, `window_count`,
     `entities_json`, `strategy`, `error`.
-- `*_relationships_edges.csv`
+- `run_YYYYMMDD-HHMM/*_relationships_edges_YYYYMMDD-HHMM.csv`
   - One row per relationship.
   - Columns: `text_id`, `window_index`, `source`, `target`, `type`, `description`.
-- `*_relationships_windows.csv` (when `--output` includes `windows`)
+- `run_YYYYMMDD-HHMM/*_relationships_windows_YYYYMMDD-HHMM.csv` (when `--output` includes `windows`)
   - One row per window.
   - Columns: `text_id`, `window_index`, `window_text`, `summary`, `relationship_count`,
     `entities_json`, `relationships_json`.

@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import csv
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any, List
 
@@ -113,7 +114,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--summary-buffer-size",
         type=int,
-        default=5,
+        default=3,
         help="Number of window summaries to keep for context.",
     )
     parser.add_argument(
@@ -121,6 +122,17 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="Window summary prompt version.",
+    )
+    parser.add_argument(
+        "--summary-min-windows",
+        type=int,
+        default=2,
+        help="Minimum number of windows required before summaries run.",
+    )
+    parser.add_argument(
+        "--no-summaries",
+        action="store_true",
+        help="Disable window summarization entirely.",
     )
     parser.add_argument(
         "--include-summaries",
@@ -181,6 +193,8 @@ async def _run() -> int:
     args = _parse_args()
     if args.prompt_version is None:
         args.prompt_version = 1 if args.strategy == "two_pass" else 2
+    if args.no_summaries and args.include_summaries:
+        args.include_summaries = False
     input_path = Path(args.input_csv)
     if not input_path.exists():
         raise SystemExit(f"Input CSV not found: {input_path}")
@@ -192,6 +206,9 @@ async def _run() -> int:
 
     output_dir = _resolve_output_dir(input_path, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+    run_dir = output_dir / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
     output_prefix = f"{input_path.stem}_relationships"
 
     window_size = args.window_size
@@ -220,7 +237,9 @@ async def _run() -> int:
         tokenizer_name=args.tokenizer,
         summary_buffer_size=args.summary_buffer_size,
         summary_prompt_version=args.summary_prompt_version,
+        enable_summaries=not args.no_summaries,
         include_summaries_in_prompt=args.include_summaries,
+        summary_min_windows=args.summary_min_windows,
         return_windows=write_windows,
         context_buffer_size=args.context_buffer_size,
         coref_resolution=args.coref,
@@ -234,7 +253,7 @@ async def _run() -> int:
     windows_handle = None
 
     if write_summary:
-        summary_path = output_dir / f"{output_prefix}_summary.csv"
+        summary_path = run_dir / f"{output_prefix}_summary_{timestamp}.csv"
         summary_writer, summary_handle = _writer(
             summary_path,
             [
@@ -250,7 +269,7 @@ async def _run() -> int:
         )
 
     if write_relationships:
-        relationships_path = output_dir / f"{output_prefix}_edges.csv"
+        relationships_path = run_dir / f"{output_prefix}_edges_{timestamp}.csv"
         relationships_writer, relationships_handle = _writer(
             relationships_path,
             [
@@ -264,7 +283,7 @@ async def _run() -> int:
         )
 
     if write_windows:
-        windows_path = output_dir / f"{output_prefix}_windows.csv"
+        windows_path = run_dir / f"{output_prefix}_windows_{timestamp}.csv"
         windows_writer, windows_handle = _writer(
             windows_path,
             [
