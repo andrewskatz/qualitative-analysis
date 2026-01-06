@@ -2,7 +2,7 @@
 Main figurative language usage detector.
 """
 
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, List
 from ..core.llm import BaseLLMProvider
 from ..core.providers import OllamaProvider
 from ..core.text import SlidingWindowProcessor
@@ -24,6 +24,7 @@ class FigurativeDetector:
         summary_buffer_size: int = 5,
         prompt_version: int = 1,
         return_windows: bool = False,
+        figurative_types: Optional[List[str]] = None,
         # Text processor config
         window_size: int = 3,
         stride: int = 2,
@@ -34,6 +35,25 @@ class FigurativeDetector:
     ):
         """
         Initialize the detector.
+        
+        Args:
+            model_name: LLM model to use
+            provider: LLM provider ("ollama", etc.)
+            provider_config: Optional config dict for provider
+            strategy: Detection strategy ("two_step")
+            threshold: Confidence threshold for detection
+            summary_buffer_size: Number of summaries to keep in context
+            prompt_version: Version of prompts to use
+            return_windows: Whether to return window-level results
+            figurative_types: Optional list of figurative types to detect.
+                If specified, only these types will be detected.
+                Valid types: metaphor, simile, personification, hyperbole,
+                idiom, irony, extended_metaphor, analogy, other
+            window_size: Number of chunks per window
+            stride: Number of chunks to slide
+            chunk_unit: "sentences" or "tokens"
+            tokenizer_name: Tokenizer for token-based chunking
+            llm_provider: Optional pre-configured LLM provider (for testing)
         """
         provider_config = provider_config or {}
         
@@ -63,6 +83,7 @@ class FigurativeDetector:
                 summary_buffer_size=summary_buffer_size,
                 prompt_version=prompt_version,
                 return_windows=return_windows,
+                figurative_types=figurative_types,
             )
         else:
             raise ValueError(f"Unknown strategy: {strategy}")
@@ -72,3 +93,4 @@ class FigurativeDetector:
         Analyze text for figurative language.
         """
         return await self.strategy.detect(text)
+

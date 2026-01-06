@@ -1,0 +1,30 @@
+<task>
+You are an expert in cognitive linguistics and conceptual metaphor theory. Your task is to identify the SOURCE DOMAIN and TARGET DOMAIN for the following figurative language.
+
+DEFINITIONS:
+- SOURCE DOMAIN: The concrete, familiar, or physical concept used to understand something else
+- TARGET DOMAIN: The abstract, unfamiliar, or conceptual idea being explained through the source
+
+</task>
+
+<figurative_language>
+Type: {figurative_type}
+Text: "{figurative_text}"
+</figurative_language>
+
+<context>
+{window_text}
+</context>
+
+<instructions>
+Analyze this {figurative_type} and identify:
+1. The SOURCE DOMAIN (concrete concept)
+2. The TARGET DOMAIN (abstract concept being explained)
+3. How the source helps understand the target
+
+Respond in JSON format with these exact keys:
+- source_domain: A brief label for the source domain (1-5 words)
+- target_domain: A brief label for the target domain (1-5 words)
+- mapping_explanation: How the source domain helps understand the target (1-2 sentences)
+- confidence: Your confidence in this analysis (0.0-1.0)
+</instructions>

@@ -3,7 +3,7 @@ Two-step strategy with summaries.
 """
 
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from .base import BaseStrategy
 from ..models import DetectionResult
@@ -26,15 +26,21 @@ class TwoStepWithSummariesStrategy(BaseStrategy):
         threshold: float = 0.5,
         prompt_version: int = 1,
         return_windows: bool = False,
+        figurative_types: Optional[List[str]] = None,
     ):
         super().__init__(llm, text_processor)
         self.summary_buffer_size = summary_buffer_size
         self.threshold = threshold
         self.return_windows = return_windows
+        self.figurative_types = figurative_types
         
         # Initialize components
         self.summarizer = Summarizer(llm, prompt_version=prompt_version)
-        self.scanner = Scanner(llm, prompt_version=prompt_version)
+        self.scanner = Scanner(
+            llm,
+            prompt_version=prompt_version,
+            figurative_types=figurative_types,
+        )
 
     async def detect(self, text: str) -> DetectionResult:
         # 1. Chunk text

@@ -1,0 +1,26 @@
+Analyze the following text in the <text_to_analyze> section and determine if it contains figurative language. Note that the text in the <prior_context> section is not the main focus of the analysis. However, you should read it to understand the broader context of the text in the <text_to_analyze> section.
+
+<prior_context>
+{prior_summaries}
+</prior_context>
+
+<background_information>
+{figurative_types_section}
+
+Consider the prior context when determining if language is figurative, but focus your analysis on the text in the <text_to_analyze> section. Some figurative language may only be apparent when you understand what came before.
+</background_information>
+
+<formatting_instructions>
+Respond in JSON format:
+{{
+  "has_figurative": true or false,
+  "confidence": 0.0 to 1.0,
+  "reasoning": "brief explanation of your decision"
+}}
+
+Only respond with the JSON object, nothing else.
+</formatting_instructions>
+
+<text_to_analyze>
+{text}
+</text_to_analyze>

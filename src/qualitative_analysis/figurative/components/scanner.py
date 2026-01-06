@@ -4,11 +4,12 @@ Figurative language scanner component.
 
 import json
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from pydantic import BaseModel
 from ...core.llm import BaseLLMProvider
 from ..models import Instance
 from ..prompts.loader import load_prompt
+from ..prompts.types import generate_types_section, get_valid_types_hint, validate_types
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +22,44 @@ class InstanceModel(BaseModel):
     context_dependent: bool
 
 class Scanner:
-    def __init__(self, llm: BaseLLMProvider, prompt_version: int = 1):
+    def __init__(
+        self,
+        llm: BaseLLMProvider,
+        prompt_version: int = 1,
+        figurative_types: Optional[List[str]] = None,
+    ):
         self.llm = llm
+        self.figurative_types = validate_types(figurative_types) if figurative_types else None
         self.system_prompt = load_prompt("system_prompt", version=1)
-        self.detector_template = load_prompt("two_step_binary_detection", version=prompt_version)
-        self.extractor_template = load_prompt("two_step_instance_extraction", version=prompt_version)
+        
+        # Use v2 prompts when type filtering is enabled, otherwise use specified version
+        if self.figurative_types is not None:
+            # v2 prompts support {figurative_types_section} and {valid_types_hint}
+            self.detector_template = load_prompt("two_step_binary_detection", version=2)
+            self.extractor_template = load_prompt("two_step_instance_extraction", version=2)
+            self._use_type_filtering = True
+        else:
+            self.detector_template = load_prompt("two_step_binary_detection", version=prompt_version)
+            self.extractor_template = load_prompt("two_step_instance_extraction", version=prompt_version)
+            self._use_type_filtering = False
+
+    def _format_prompt(self, template: str, text: str, prior_context: str) -> str:
+        """Format a prompt template with type-aware substitution."""
+        if self._use_type_filtering:
+            return template.format(
+                text=text,
+                prior_summaries=prior_context,
+                figurative_types_section=generate_types_section(self.figurative_types),
+                valid_types_hint=get_valid_types_hint(self.figurative_types),
+            )
+        else:
+            return template.format(text=text, prior_summaries=prior_context)
 
     async def detect(self, text: str, prior_context: str) -> Tuple[bool, float]:
         """
         Binary detection of figurative language.
         """
-        prompt = self.detector_template.format(text=text, prior_summaries=prior_context)
+        prompt = self._format_prompt(self.detector_template, text, prior_context)
 
         response = await self.llm.generate(
             prompt=prompt,
@@ -64,7 +92,7 @@ class Scanner:
         """
         Extract instances of figurative language.
         """
-        prompt = self.extractor_template.format(text=text, prior_summaries=prior_context)
+        prompt = self._format_prompt(self.extractor_template, text, prior_context)
 
         try:
             response = await self.llm.generate(
@@ -85,6 +113,14 @@ class Scanner:
                     model = InstanceModel.model_validate(item)
                 except Exception:
                     continue
+                
+                # If type filtering is enabled, skip instances that don't match
+                if self.figurative_types is not None:
+                    item_type = model.type.lower().strip().replace(" ", "_").replace("-", "_")
+                    if item_type not in self.figurative_types:
+                        logger.debug(f"Skipping instance with type '{model.type}' - not in filter list")
+                        continue
+                
                 instances.append(Instance(
                     text=model.text,
                     type=model.type,
@@ -101,3 +137,4 @@ class Scanner:
         except Exception as exc:
             logger.warning(f"Extraction failed: {exc}")
             return []
+

@@ -1,0 +1,33 @@
+<figurative_language>
+Type: {figurative_type}
+Expression: "{figurative_text}"
+</figurative_language>
+
+<context>
+{window_text}
+</context>
+
+<instructions>
+Analyze this {figurative_type} expression and extract domains at all three abstraction levels.
+
+IMPORTANT: Reason through your analysis in the "reasoning" field BEFORE providing domain labels.
+
+Respond with a JSON object in this exact format:
+{{
+  "reasoning": "Step-by-step analysis of the metaphor and abstraction level considerations",
+  "source_domain": {{
+    "specific": "1-3 word label at specific/concrete level",
+    "moderate": "1-3 word label at moderate/conceptual level",
+    "abstract": "1-3 word label at abstract/cognitive level"
+  }},
+  "target_domain": {{
+    "specific": "1-3 word label at specific/concrete level",
+    "moderate": "1-3 word label at moderate/conceptual level",
+    "abstract": "1-3 word label at abstract/cognitive level"
+  }},
+  "mapping_explanation": "How source domain concepts map to target domain concepts (1-2 sentences)",
+  "confidence": 0.85
+}}
+
+Note: confidence should be a decimal between 0.0 and 1.0.
+</instructions>

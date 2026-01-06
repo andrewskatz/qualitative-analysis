@@ -1,0 +1,11 @@
+text_id,text,type,confidence,window_text
+1,"Time is a thief",metaphor,0.95,"We often feel that time steals our most precious moments when we're not looking."
+2,"Life is a journey",metaphor,0.92,"The path we walk through life has many unexpected turns and obstacles."
+3,"Arguments are war",metaphor,0.88,"They attacked my position fiercely in the debate, defending their territory."
+4,"Ideas are plants",metaphor,0.85,"The concept took root in her mind and began to blossom into something beautiful."
+5,"Knowledge is light",metaphor,0.90,"Education illuminates the darkness of ignorance and shows us the way forward."
+6,"The economy is a machine",metaphor,0.87,"The gears of commerce grind on, with each sector driving another."
+7,"Love is a rose",simile,0.82,"Their relationship bloomed beautifully but was not without its thorns."
+8,"She moved like water",simile,0.91,"Her dance was as fluid as a stream, flowing effortlessly across the floor."
+9,"The news spread like wildfire",simile,0.89,"Everyone heard about it within hours, the information burning through social networks."
+10,"The city never sleeps",personification,0.93,"New York hums with activity at all hours, its streets alive with movement."

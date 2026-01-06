@@ -85,6 +85,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--threshold", type=float, default=0.5, help="Detection threshold.")
     parser.add_argument("--prompt-version", type=int, default=1, help="Prompt version.")
+    parser.add_argument(
+        "--types",
+        default=None,
+        help=(
+            "Comma-separated figurative types to detect (e.g., 'metaphor,analogy'). "
+            "Valid types: metaphor, simile, personification, hyperbole, idiom, irony, "
+            "extended_metaphor, analogy, other. Default: all types."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -125,6 +134,12 @@ async def _run() -> int:
         window_size = 1_000_000
         stride = 1_000_000
 
+    # Parse figurative types if specified
+    figurative_types = None
+    if args.types:
+        figurative_types = [t.strip() for t in args.types.split(",") if t.strip()]
+        print(f"Filtering for figurative types: {figurative_types}")
+
     detector = FigurativeDetector(
         model_name=args.model,
         provider="ollama",
@@ -142,6 +157,7 @@ async def _run() -> int:
         chunk_unit=args.chunk_unit,
         tokenizer_name=args.tokenizer,
         return_windows=write_windows,
+        figurative_types=figurative_types,
     )
 
     summary_writer = None
@@ -174,6 +190,7 @@ async def _run() -> int:
             [
                 "text_id",
                 "window_index",
+                "window_text",
                 "instance_text",
                 "type",
                 "confidence",
@@ -241,11 +258,20 @@ async def _run() -> int:
                     )
 
                 if result and write_instances and instances_writer:
+                    # Build window_text lookup from metadata
+                    window_texts = {}
+                    for window in result.metadata.get("windows", []):
+                        w_idx = window.get("window_index")
+                        if w_idx is not None:
+                            window_texts[w_idx] = window.get("window_text", "")
+                    
                     for instance in result.instances:
+                        w_idx = getattr(instance, "window_index", 0)
                         instances_writer.writerow(
                             {
                                 "text_id": text_id,
-                                "window_index": getattr(instance, "window_index", ""),
+                                "window_index": w_idx,
+                                "window_text": window_texts.get(w_idx, ""),
                                 "instance_text": getattr(instance, "text", ""),
                                 "type": getattr(instance, "type", ""),
                                 "confidence": getattr(instance, "confidence", ""),
