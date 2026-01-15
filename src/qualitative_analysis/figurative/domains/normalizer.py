@@ -353,12 +353,19 @@ class DomainNormalizer:
 {members}
 
 Generate a single canonical label that best represents this group of concepts.
-The label should be:
+
+Respond with a JSON object in this exact format:
+{{
+  "reasoning": "Explanation of why this label was chosen...",
+  "canonical_label": "LABEL"
+}}
+
+The canonical_label should be:
 - 1-3 words
 - More abstract/general than the specific members
 - Written in UPPERCASE
 
-Respond with only the canonical label, nothing else."""
+Respond with ONLY the JSON object, nothing else."""
         
         for cluster in clusters:
             if len(cluster.members) == 1:
@@ -370,7 +377,22 @@ Respond with only the canonical label, nothing else."""
             
             try:
                 response = await llm.generate(prompt=prompt, temperature=0.3)
-                cluster.canonical = response.strip().upper()
+                
+                # Parse JSON response
+                cleaned = response.strip()
+                if cleaned.startswith("```json"):
+                    cleaned = cleaned[7:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                cleaned = cleaned.strip()
+                
+                data = json.loads(cleaned)
+                cluster.canonical = data.get("canonical_label", "").strip().upper()
+                
+                # Log reasoning if available
+                if "reasoning" in data:
+                    logger.debug(f"Canonical label reasoning for {cluster.canonical}: {data['reasoning']}")
+                    
             except Exception as e:
                 logger.warning(f"LLM canonical generation failed: {e}")
                 # Fall back to representative

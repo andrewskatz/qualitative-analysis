@@ -1,7 +1,8 @@
 """
 CLI for domain mapping, normalization, and graph generation.
 
-Entry point: qualitative-domains
+This module can be used standalone via `qualitative-domains` command (deprecated)
+or through the unified CLI via `qa figurative map|normalize|graph|pipeline`.
 """
 
 import argparse
@@ -14,6 +15,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from qualitative_analysis.core.cli_utils import (
+    emit_deprecation_warning,
+    resolve_nested_output_dir,
+)
 from .domains import (
     DomainExtractor,
     DomainNormalizer,
@@ -29,8 +34,279 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ==================== ARGUMENT FUNCTIONS ====================
+# These are used by both the standalone CLI and the unified CLI
+
+def add_map_args(parser: argparse.ArgumentParser) -> None:
+    """Add domain mapping arguments to a parser."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to CSV file containing figurative instances.",
+    )
+    parser.add_argument(
+        "--output", "-o",
+        default=None,
+        help="Output CSV path (default: <input>_domains.csv)",
+    )
+    parser.add_argument(
+        "--text-col",
+        default="text",
+        help="Column name for figurative text (default: text)",
+    )
+    parser.add_argument(
+        "--type-col",
+        default="type",
+        help="Column name for figurative type (default: type)",
+    )
+    parser.add_argument(
+        "--window-col",
+        default=None,
+        help="Column name for window context (optional)",
+    )
+    parser.add_argument(
+        "--id-col",
+        default=None,
+        help="Column name for text ID (optional)",
+    )
+    parser.add_argument(
+        "--multi-level",
+        action="store_true",
+        help="Map domains at multiple abstraction levels",
+    )
+    parser.add_argument(
+        "--model",
+        default="qwen3:30b-a3b-instruct-2507-q4_K_M",
+        help="Ollama model name",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:11434",
+        help="Ollama base URL",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Checkpoint file path for resumable processing",
+    )
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=int,
+        default=50,
+        help="Save checkpoint every N items",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="Print LLM prompts and responses to the terminal",
+    )
+
+
+def add_normalize_args(parser: argparse.ArgumentParser) -> None:
+    """Add domain normalization arguments to a parser."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to CSV file with domain-mapped instances.",
+    )
+    parser.add_argument(
+        "--output", "-o",
+        default=None,
+        help="Output CSV path (default: <input>_normalized.csv)",
+    )
+    parser.add_argument(
+        "--merge-threshold",
+        default="normal",
+        help="Similarity threshold for merging domains. Use 'strict' (0.85), 'normal' (0.75), 'loose' (0.60), or a number 0.0-1.0 (default: normal)",
+    )
+    parser.add_argument(
+        "--cluster-mode",
+        default="separate",
+        choices=["separate", "together"],
+        help="Cluster source/target separately or together",
+    )
+    parser.add_argument(
+        "--canonical-method",
+        default="representative",
+        choices=["representative", "llm"],
+        help="How to generate canonical labels",
+    )
+    parser.add_argument(
+        "--abstraction-level",
+        default=None,
+        choices=["specific", "moderate", "abstract"],
+        help="Which abstraction level to normalize",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default="Qwen/Qwen3-Embedding-0.6B",
+        help="Sentence embedding model",
+    )
+    parser.add_argument(
+        "--device",
+        default=None,
+        choices=["cpu", "cuda", "mps"],
+        help="Device for embeddings (default: auto)",
+    )
+    parser.add_argument(
+        "--save-config",
+        default=None,
+        help="Save normalization config to JSON file",
+    )
+    parser.add_argument(
+        "--load-config",
+        default=None,
+        help="Load and apply normalization from JSON file",
+    )
+    parser.add_argument(
+        "--model",
+        default="qwen3:30b-a3b-instruct-2507-q4_K_M",
+        help="LLM model for canonical-method=llm",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:11434",
+        help="Ollama base URL",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="Print LLM prompts and responses to the terminal",
+    )
+
+
+def add_graph_args(parser: argparse.ArgumentParser) -> None:
+    """Add graph generation arguments to a parser."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to CSV file with domain-mapped instances.",
+    )
+    parser.add_argument(
+        "--output", "-o",
+        default=None,
+        help="Output path/prefix (default: <input>_graph)",
+    )
+    parser.add_argument(
+        "--format",
+        default="json",
+        choices=["json", "csv", "both"],
+        help="Output format (default: json)",
+    )
+    parser.add_argument(
+        "--load-normalization",
+        default=None,
+        help="Apply normalization from JSON file",
+    )
+    parser.add_argument(
+        "--abstraction-level",
+        default=None,
+        choices=["specific", "moderate", "abstract"],
+        help="Which abstraction level to use",
+    )
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Generate PNG visualization of the graph",
+    )
+    parser.add_argument(
+        "--layout",
+        default="spring",
+        choices=["spring", "circular", "kamada_kawai", "semantic"],
+        help="Layout algorithm for PNG visualization. 'semantic' positions nodes by embedding similarity. (default: spring)",
+    )
+    parser.add_argument(
+        "--cluster-labels",
+        action="store_true",
+        help="Enable cluster-based region labeling (reduces visual clutter)",
+    )
+    parser.add_argument(
+        "--min-cluster-size",
+        type=int,
+        default=3,
+        help="Minimum nodes per cluster (default: 3)",
+    )
+    parser.add_argument(
+        "--noise-handling",
+        default="label",
+        choices=["label", "hide", "other"],
+        help="How to handle outlier nodes: label (small text), hide, or group as 'other' (default: label)",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="LLM model for generating cluster labels (optional)",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:11434",
+        help="Ollama base URL (default: http://localhost:11434)",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="Log LLM prompts and responses",
+    )
+
+
+def add_pipeline_args(parser: argparse.ArgumentParser) -> None:
+    """Add full pipeline arguments to a parser."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to CSV file containing figurative instances.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory (default: alongside input)",
+    )
+    parser.add_argument(
+        "--skip-normalize",
+        action="store_true",
+        help="Skip normalization step",
+    )
+    parser.add_argument(
+        "--skip-graph",
+        action="store_true",
+        help="Skip graph generation step",
+    )
+    parser.add_argument(
+        "--model",
+        default="qwen3:30b-a3b-instruct-2507-q4_K_M",
+        help="Ollama model name",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:11434",
+        help="Ollama base URL",
+    )
+    parser.add_argument(
+        "--conservativeness",
+        default="moderate",
+        choices=["conservative", "moderate", "aggressive"],
+        help="Clustering conservativeness",
+    )
+    parser.add_argument(
+        "--graph-format",
+        default="both",
+        choices=["json", "csv", "both"],
+        help="Graph output format",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="Print LLM prompts and responses to the terminal",
+    )
+
+
+# ==================== MAIN ENTRY POINT ====================
+
+
 def main() -> int:
-    """Main entry point."""
+    """
+    Legacy entry point for standalone CLI.
+    
+    DEPRECATED: Use `qa figurative map|normalize|graph|pipeline` instead.
+    """
+    emit_deprecation_warning("qualitative-domains", "qa figurative <command>")
+    
     parser = argparse.ArgumentParser(
         prog="qualitative-domains",
         description="Domain mapping and normalization for figurative language analysis.",
@@ -38,233 +314,30 @@ def main() -> int:
     
     subparsers = parser.add_subparsers(dest="command", required=True)
     
-    # ==================== EXTRACT SUBCOMMAND ====================
-    extract_parser = subparsers.add_parser(
-        "extract",
-        help="Extract source/target domains from figurative instances.",
-    )
-    extract_parser.add_argument(
-        "input_csv",
-        help="Path to CSV file containing figurative instances.",
-    )
-    extract_parser.add_argument(
-        "--output", "-o",
-        default=None,
-        help="Output CSV path (default: <input>_domains.csv)",
-    )
-    extract_parser.add_argument(
-        "--text-col",
-        default="text",
-        help="Column name for figurative text (default: text)",
-    )
-    extract_parser.add_argument(
-        "--type-col",
-        default="type",
-        help="Column name for figurative type (default: type)",
-    )
-    extract_parser.add_argument(
-        "--window-col",
-        default=None,
-        help="Column name for window context (optional)",
-    )
-    extract_parser.add_argument(
-        "--id-col",
-        default=None,
-        help="Column name for text ID (optional)",
-    )
-    extract_parser.add_argument(
-        "--multi-level",
-        action="store_true",
-        help="Extract domains at multiple abstraction levels",
-    )
-    extract_parser.add_argument(
-        "--model",
-        default="qwen3:30b-a3b-instruct-2507-q4_K_M",
-        help="Ollama model name",
-    )
-    extract_parser.add_argument(
-        "--base-url",
-        default="http://localhost:11434",
-        help="Ollama base URL",
-    )
-    extract_parser.add_argument(
-        "--checkpoint",
-        default=None,
-        help="Checkpoint file path for resumable processing",
-    )
-    extract_parser.add_argument(
-        "--checkpoint-interval",
-        type=int,
-        default=50,
-        help="Save checkpoint every N items",
-    )
-    extract_parser.add_argument(
-        "--log-llm",
-        action="store_true",
-        help="Print LLM prompts and responses to the terminal",
-    )
+    # Add subparsers using the extracted functions
+    map_parser = subparsers.add_parser("map", help="Map source/target domains from figurative instances.")
+    add_map_args(map_parser)
     
-    # ==================== NORMALIZE SUBCOMMAND ====================
-    normalize_parser = subparsers.add_parser(
-        "normalize",
-        help="Normalize/cluster domain labels.",
-    )
-    normalize_parser.add_argument(
-        "input_csv",
-        help="Path to CSV file with domain-mapped instances.",
-    )
-    normalize_parser.add_argument(
-        "--output", "-o",
-        default=None,
-        help="Output CSV path (default: <input>_normalized.csv)",
-    )
-    normalize_parser.add_argument(
-        "--conservativeness",
-        default="moderate",
-        choices=["conservative", "moderate", "aggressive", "custom"],
-        help="Clustering conservativeness (default: moderate)",
-    )
-    normalize_parser.add_argument(
-        "--threshold",
-        type=float,
-        default=None,
-        help="Custom similarity threshold (required if conservativeness=custom)",
-    )
-    normalize_parser.add_argument(
-        "--cluster-mode",
-        default="separate",
-        choices=["separate", "together"],
-        help="Cluster source/target separately or together",
-    )
-    normalize_parser.add_argument(
-        "--canonical-method",
-        default="representative",
-        choices=["representative", "llm"],
-        help="How to generate canonical labels",
-    )
-    normalize_parser.add_argument(
-        "--abstraction-level",
-        default=None,
-        choices=["specific", "moderate", "abstract"],
-        help="Which abstraction level to normalize",
-    )
-    normalize_parser.add_argument(
-        "--embedding-model",
-        default="Qwen/Qwen3-Embedding-0.6B",
-        help="Sentence embedding model",
-    )
-    normalize_parser.add_argument(
-        "--device",
-        default=None,
-        choices=["cpu", "cuda", "mps"],
-        help="Device for embeddings (default: auto)",
-    )
-    normalize_parser.add_argument(
-        "--save-config",
-        default=None,
-        help="Save normalization config to JSON file",
-    )
-    normalize_parser.add_argument(
-        "--load-config",
-        default=None,
-        help="Load and apply normalization from JSON file",
-    )
+    normalize_parser = subparsers.add_parser("normalize", help="Normalize/cluster domain labels.")
+    add_normalize_args(normalize_parser)
     
-    # ==================== GRAPH SUBCOMMAND ====================
-    graph_parser = subparsers.add_parser(
-        "graph",
-        help="Generate domain relationship graph.",
-    )
-    graph_parser.add_argument(
-        "input_csv",
-        help="Path to CSV file with domain-mapped instances.",
-    )
-    graph_parser.add_argument(
-        "--output", "-o",
-        default=None,
-        help="Output path/prefix (default: <input>_graph)",
-    )
-    graph_parser.add_argument(
-        "--format",
-        default="json",
-        choices=["json", "csv", "both"],
-        help="Output format (default: json)",
-    )
-    graph_parser.add_argument(
-        "--load-normalization",
-        default=None,
-        help="Apply normalization from JSON file",
-    )
-    graph_parser.add_argument(
-        "--abstraction-level",
-        default=None,
-        choices=["specific", "moderate", "abstract"],
-        help="Which abstraction level to use",
-    )
+    graph_parser = subparsers.add_parser("graph", help="Generate domain relationship graph.")
+    add_graph_args(graph_parser)
     
-    # ==================== PIPELINE SUBCOMMAND ====================
-    pipeline_parser = subparsers.add_parser(
-        "pipeline",
-        help="Run full pipeline: extract → normalize → graph",
-    )
-    pipeline_parser.add_argument(
-        "input_csv",
-        help="Path to CSV file containing figurative instances.",
-    )
-    pipeline_parser.add_argument(
-        "--output-dir",
-        default=None,
-        help="Output directory (default: alongside input)",
-    )
-    pipeline_parser.add_argument(
-        "--skip-normalize",
-        action="store_true",
-        help="Skip normalization step",
-    )
-    pipeline_parser.add_argument(
-        "--skip-graph",
-        action="store_true",
-        help="Skip graph generation step",
-    )
-    pipeline_parser.add_argument(
-        "--model",
-        default="qwen3:30b-a3b-instruct-2507-q4_K_M",
-        help="Ollama model name",
-    )
-    pipeline_parser.add_argument(
-        "--base-url",
-        default="http://localhost:11434",
-        help="Ollama base URL",
-    )
-    pipeline_parser.add_argument(
-        "--conservativeness",
-        default="moderate",
-        choices=["conservative", "moderate", "aggressive"],
-        help="Clustering conservativeness",
-    )
-    pipeline_parser.add_argument(
-        "--graph-format",
-        default="both",
-        choices=["json", "csv", "both"],
-        help="Graph output format",
-    )
-    pipeline_parser.add_argument(
-        "--log-llm",
-        action="store_true",
-        help="Print LLM prompts and responses to the terminal",
-    )
+    pipeline_parser = subparsers.add_parser("pipeline", help="Run full pipeline: extract → normalize → graph")
+    add_pipeline_args(pipeline_parser)
     
     args = parser.parse_args()
     
     try:
-        if args.command == "extract":
-            return asyncio.run(_run_extract(args))
+        if args.command == "map":
+            return asyncio.run(run_map(args))
         elif args.command == "normalize":
-            return _run_normalize(args)
+            return run_normalize(args)
         elif args.command == "graph":
-            return _run_graph(args)
+            return run_graph(args)
         elif args.command == "pipeline":
-            return asyncio.run(_run_pipeline(args))
+            return asyncio.run(run_pipeline(args))
         else:
             parser.print_help()
             return 1
@@ -276,18 +349,68 @@ def main() -> int:
         return 1
 
 
-async def _run_extract(args) -> int:
-    """Run domain extraction."""
+# ==================== HANDLER FUNCTIONS ====================
+# These are the actual implementation functions, callable from unified CLI
+
+async def run_map(args) -> int:
+    """Run domain mapping."""
     input_path = Path(args.input_csv)
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
     
-    output_path = Path(args.output) if args.output else input_path.with_suffix(".domains.csv")
+    # Resolve output directory with nested structure
+    output_dir, timestamp = resolve_nested_output_dir(
+        input_path, 
+        "map",
+        output_dir=getattr(args, 'output_dir', None),
+    )
+    
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        output_path = output_dir / f"domain_mappings_{timestamp}.csv"
+    
     checkpoint_path = Path(args.checkpoint) if args.checkpoint else None
     
-    print(f"Extracting domains from: {input_path}")
+    start_time = datetime.now()
+    print(f"Mapping domains from: {input_path}")
     print(f"Output: {output_path}")
+
+    # Auto-detect text column if using default "text"
+    text_col = args.text_col
+    window_col = args.window_col
+    id_col = args.id_col
     
+    # Read header once to check for columns
+    with open(input_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        try:
+            header = next(reader)
+            
+            # Auto-detect text column
+            if text_col == "text":
+                if "instance_text" in header and "text" not in header:
+                    text_col = "instance_text"
+                    print(f"Auto-detected text column: '{text_col}'")
+            
+            # Auto-detect window column if not specified
+            if window_col is None:
+                if "window_text" in header:
+                    window_col = "window_text"
+                    print(f"Auto-detected window column: '{window_col}'")
+
+            # Auto-detect ID column if not specified
+            if id_col is None:
+                if "text_id" in header:
+                    id_col = "text_id"
+                    print(f"Auto-detected ID column: '{id_col}'")
+                elif "id" in header:
+                    id_col = "id"
+                    print(f"Auto-detected ID column: '{id_col}'")
+                    
+        except StopIteration:
+            pass
+
     extractor = DomainExtractor(
         model_name=args.model,
         provider="ollama",
@@ -304,10 +427,10 @@ async def _run_extract(args) -> int:
     
     results = await extractor.extract_from_csv(
         input_path,
-        text_col=args.text_col,
+        text_col=text_col,
         type_col=args.type_col,
-        window_col=args.window_col,
-        text_id_col=args.id_col,
+        window_col=window_col,
+        text_id_col=id_col,
         checkpoint_path=checkpoint_path,
         checkpoint_interval=args.checkpoint_interval,
         on_progress=on_progress,
@@ -318,19 +441,67 @@ async def _run_extract(args) -> int:
     # Save results
     _save_instances_csv(results, output_path, multi_level=args.multi_level)
     
-    print(f"\nExtracted {len(results)} domain mappings")
+    end_time = datetime.now()
+    
+    # Write metadata JSON
+    metadata = {
+        "step": "domain_mapping",
+        "run_id": f"mapping_{timestamp}",
+        "timestamp_start": start_time.isoformat(),
+        "timestamp_end": end_time.isoformat(),
+        "duration_seconds": round((end_time - start_time).total_seconds(), 2),
+        "cli_args": {
+            "input_csv": str(input_path),
+            "output": str(output_path),
+            "text_col": args.text_col,
+            "type_col": args.type_col,
+            "window_col": args.window_col,
+            "id_col": args.id_col,
+            "multi_level": args.multi_level,
+            "model": args.model,
+            "base_url": args.base_url,
+            "checkpoint": str(checkpoint_path) if checkpoint_path else None,
+            "checkpoint_interval": args.checkpoint_interval,
+        },
+        "stats": {
+            "instances_processed": len(results),
+            "domains_mapped": sum(1 for r in results if r.source_domain or r.target_domain),
+        },
+        "outputs": {
+            "domain_mappings_csv": str(output_path),
+        },
+        "package_version": "0.1.0",
+    }
+    
+    metadata_path = output_path.parent / f"mapping_metadata_{timestamp}.json"
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+    
+    print(f"\nMapped {len(results)} domain mappings")
     print(f"Saved to: {output_path}")
+    print(f"Wrote metadata: {metadata_path}")
     
     return 0
 
 
-def _run_normalize(args) -> int:
+def run_normalize(args) -> int:
     """Run domain normalization."""
     input_path = Path(args.input_csv)
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
     
-    output_path = Path(args.output) if args.output else input_path.with_suffix(".normalized.csv")
+    # Resolve output directory with nested structure
+    output_dir, timestamp = resolve_nested_output_dir(
+        input_path,
+        "normalize",
+        output_dir=getattr(args, 'output_dir', None),
+    )
+    start_time = datetime.now()
+    
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        output_path = output_dir / f"normalized_{timestamp}.csv"
     
     print(f"Normalizing domains from: {input_path}")
     
@@ -353,39 +524,121 @@ def _run_normalize(args) -> int:
             device=args.device,
         )
         
-        print(f"Clustering with {args.conservativeness} conservativeness...")
+        # Parse merge threshold
+        merge_threshold = args.merge_threshold
+        threshold_presets = {"strict": 0.85, "normal": 0.75, "loose": 0.60}
+        
+        if merge_threshold in threshold_presets:
+            threshold_value = threshold_presets[merge_threshold]
+            print(f"Clustering with {merge_threshold} merge threshold ({threshold_value})...")
+        else:
+            try:
+                threshold_value = float(merge_threshold)
+                if not 0.0 <= threshold_value <= 1.0:
+                    raise ValueError("Threshold must be between 0.0 and 1.0")
+                print(f"Clustering with custom merge threshold ({threshold_value})...")
+            except ValueError:
+                print(f"Invalid merge-threshold: {merge_threshold}. Use 'strict', 'normal', 'loose', or a number 0.0-1.0")
+                return 1
+        
+        # Build LLM config if using LLM canonical method
+        llm_config = None
+        if args.canonical_method == "llm":
+            llm_config = {
+                "base_url": args.base_url,
+                "log_prompts": args.log_llm,
+                "log_responses": args.log_llm,
+            }
+        
         normalization = normalizer.normalize(
             instances,
-            conservativeness=args.conservativeness,
-            similarity_threshold=args.threshold,
+            conservativeness="custom",
+            similarity_threshold=threshold_value,
             cluster_mode=args.cluster_mode,
             canonical_method=args.canonical_method,
             abstraction_level=args.abstraction_level,
+            llm_model=args.model if args.canonical_method == "llm" else None,
+            llm_provider="ollama" if args.canonical_method == "llm" else None,
+            llm_config=llm_config,
         )
         
         print(f"Created {len(normalization.source_clusters)} source clusters, "
               f"{len(normalization.target_clusters)} target clusters")
         
-        if args.save_config:
-            normalizer.save(normalization, Path(args.save_config))
-            print(f"Saved normalization config to: {args.save_config}")
+        # Always save normalization config (auto-save)
+        config_path = Path(args.save_config) if args.save_config else output_path.parent / f"normalization_config_{timestamp}.json"
+        normalizer.save(normalization, config_path)
+        print(f"Saved normalization config to: {config_path}")
     
     # Apply normalization and save
     _save_normalized_csv(instances, normalization, output_path, args.abstraction_level)
     print(f"Saved normalized instances to: {output_path}")
     
+    end_time = datetime.now()
+    
+    # Write metadata JSON
+    metadata = {
+        "step": "domain_normalization",
+        "run_id": f"normalize_{timestamp}",
+        "timestamp_start": start_time.isoformat(),
+        "timestamp_end": end_time.isoformat(),
+        "duration_seconds": round((end_time - start_time).total_seconds(), 2),
+        "cli_args": {
+            "input_csv": str(input_path),
+            "output": str(output_path),
+            "merge_threshold": args.merge_threshold,
+            "cluster_mode": args.cluster_mode,
+            "canonical_method": args.canonical_method,
+            "canonical_model": args.model if args.canonical_method == "llm" else None,
+            "abstraction_level": args.abstraction_level or "moderate",
+            "embedding_model": args.embedding_model,
+            "device": args.device,
+            "load_config": args.load_config,
+            "save_config": args.save_config,
+        },
+        "stats": {
+            "instances_processed": len(instances),
+            "source_clusters": len(normalization.source_clusters),
+            "target_clusters": len(normalization.target_clusters),
+        },
+        "outputs": {
+            "normalized_csv": str(output_path),
+            "normalization_config": str(config_path) if not args.load_config else None,
+        },
+        "package_version": "0.1.0",
+    }
+    
+    metadata_path = output_path.parent / f"normalize_metadata_{timestamp}.json"
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Wrote metadata: {metadata_path}")
+    
     return 0
 
 
-def _run_graph(args) -> int:
+def run_graph(args) -> int:
     """Run graph generation."""
     input_path = Path(args.input_csv)
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
     
-    output_prefix = args.output or str(input_path.with_suffix(""))
-    output_dir = Path(output_prefix).parent
-    prefix = Path(output_prefix).name
+    # Resolve output directory with nested structure
+    output_dir, timestamp = resolve_nested_output_dir(
+        input_path,
+        "graph",
+        output_dir=getattr(args, 'output_dir', None),
+    )
+    start_time = datetime.now()
+    
+    # Use output_dir for graph files
+    if args.output:
+        output_prefix = args.output
+        graph_output_dir = Path(output_prefix).parent
+        prefix = Path(output_prefix).name
+    else:
+        graph_output_dir = output_dir
+        prefix = f"graph_{timestamp}"
+        output_prefix = str(graph_output_dir / prefix)
     
     print(f"Generating graph from: {input_path}")
     
@@ -403,11 +656,33 @@ def _run_graph(args) -> int:
     # Generate graph
     graph = DomainGraph(instances, normalization)
     saved_paths = graph.save(
-        output_dir,
+        graph_output_dir,
         format=args.format,
         prefix=prefix,
         abstraction_level=args.abstraction_level,
+        visualize=args.visualize and not getattr(args, 'cluster_labels', False),
+        layout=args.layout,
     )
+    
+    # Generate clustered visualization if requested
+    if getattr(args, 'cluster_labels', False) and args.visualize:
+        clustered_path = graph_output_dir / f"{prefix}_clustered.png"
+        provider_config = {
+            "base_url": getattr(args, 'base_url', 'http://localhost:11434'),
+            "log_prompts": getattr(args, 'log_llm', False),
+            "log_responses": getattr(args, 'log_llm', False),
+        }
+        graph.to_png_clustered(
+            clustered_path,
+            min_cluster_size=getattr(args, 'min_cluster_size', 3),
+            noise_handling=getattr(args, 'noise_handling', 'label'),
+            model=getattr(args, 'model', None),
+            provider_config=provider_config if getattr(args, 'model', None) else None,
+        )
+        saved_paths.append(clustered_path)
+        print(f"Generated clustered visualization: {clustered_path}")
+    
+    end_time = datetime.now()
     
     stats = graph._graph_data.stats
     print(f"\nGraph statistics:")
@@ -415,14 +690,40 @@ def _run_graph(args) -> int:
     print(f"  Edges: {stats['edge_count']}")
     print(f"  Normalized: {stats['is_normalized']}")
     
+    # Write metadata JSON
+    metadata = {
+        "step": "graph_generation",
+        "run_id": f"graph_{timestamp}",
+        "timestamp_start": start_time.isoformat(),
+        "timestamp_end": end_time.isoformat(),
+        "duration_seconds": round((end_time - start_time).total_seconds(), 2),
+        "cli_args": {
+            "input_csv": str(input_path),
+            "output_prefix": output_prefix,
+            "format": args.format,
+            "load_normalization": args.load_normalization,
+            "abstraction_level": args.abstraction_level,
+        },
+        "stats": stats,
+        "outputs": {
+            "files": [str(p) for p in saved_paths],
+        },
+        "package_version": "0.1.0",
+    }
+    
+    metadata_path = output_dir / f"graph_metadata_{timestamp}.json"
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+    
     print(f"\nSaved to:")
     for p in saved_paths:
         print(f"  {p}")
+    print(f"Wrote metadata: {metadata_path}")
     
     return 0
 
 
-async def _run_pipeline(args) -> int:
+async def run_pipeline(args) -> int:
     """Run full pipeline: extract → normalize → graph."""
     input_path = Path(args.input_csv)
     if not input_path.exists():

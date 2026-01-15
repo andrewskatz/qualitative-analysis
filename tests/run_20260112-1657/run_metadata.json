@@ -1,0 +1,36 @@
+{
+  "run_id": "run_20260112-1657",
+  "timestamp_start": "2026-01-12T16:57:40.663746",
+  "timestamp_end": "2026-01-12T17:02:09.904403",
+  "duration_seconds": 269.24,
+  "cli_args": {
+    "input_csv": "tests/paired-figurative-statements-20.csv",
+    "text_col": "text",
+    "id_col": null,
+    "output": "instances+windows",
+    "model": "gpt-oss:120b",
+    "base_url": "http://localhost:11434",
+    "window_size": 3,
+    "stride": 2,
+    "chunk_unit": "sentences",
+    "tokenizer": "cl100k_base",
+    "no_windowing": false,
+    "threshold": 0.5,
+    "context_window": 5,
+    "prompt_version": 1,
+    "types": null,
+    "log_llm": true
+  },
+  "stats": {
+    "texts_processed": 20,
+    "windows_analyzed": 20,
+    "instances_found": 25,
+    "errors": 0
+  },
+  "outputs": {
+    "summary": null,
+    "instances": "tests/run_20260112-1657/paired-figurative-statements-20_figurative_instances_20260112-1657.csv",
+    "windows": "tests/run_20260112-1657/paired-figurative-statements-20_figurative_windows_20260112-1657.csv"
+  },
+  "package_version": "0.1.0"
+}

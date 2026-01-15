@@ -1,5 +1,8 @@
 """
 CLI for running figurative language detection on CSV files.
+
+This module can be used standalone via `qualitative-analysis` command (deprecated)
+or through the unified CLI via `qa figurative detect`.
 """
 
 from __future__ import annotations
@@ -7,10 +10,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable
+from typing import Any, Dict
 
+from qualitative_analysis.core.cli_utils import emit_deprecation_warning
 from qualitative_analysis.figurative.detector import FigurativeDetector
 
 OUTPUT_CHOICES = {
@@ -35,10 +40,12 @@ def _parse_output_selection(value: str) -> set[str]:
     return set(parts)
 
 
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Run figurative language detection on a CSV file."
-    )
+def add_figurative_detect_args(parser: argparse.ArgumentParser) -> None:
+    """
+    Add figurative detection arguments to a parser.
+    
+    This is used by both the standalone CLI and the unified CLI.
+    """
     parser.add_argument("input_csv", help="Path to input CSV file.")
     parser.add_argument("--id-col", default=None, help="Column name for IDs (optional).")
     parser.add_argument("--text-col", default="text", help="Column name for text.")
@@ -51,7 +58,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Output directory (default: alongside input CSV).",
+        help="Output directory (default: output/).",
     )
     parser.add_argument("--model", default="qwen3:30b-a3b-instruct-2507-q4_K_M", help="Ollama model name.")
     parser.add_argument(
@@ -84,6 +91,12 @@ def _parse_args() -> argparse.Namespace:
         help="Disable windowing and analyze each text as a single window.",
     )
     parser.add_argument("--threshold", type=float, default=0.5, help="Detection threshold.")
+    parser.add_argument(
+        "--context-window",
+        type=int,
+        default=5,
+        help="Number of previous window summaries to include as context (default: 5).",
+    )
     parser.add_argument("--prompt-version", type=int, default=1, help="Prompt version.")
     parser.add_argument(
         "--types",
@@ -94,13 +107,26 @@ def _parse_args() -> argparse.Namespace:
             "extended_metaphor, analogy, other. Default: all types."
         ),
     )
+
+
+def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments (for standalone usage)."""
+    parser = argparse.ArgumentParser(
+        description="Run figurative language detection on a CSV file."
+    )
+    add_figurative_detect_args(parser)
     return parser.parse_args()
 
 
 def _resolve_output_dir(input_path: Path, output_dir: str | None) -> Path:
     if output_dir:
-        return Path(output_dir)
-    return input_path.parent
+        path = Path(output_dir)
+    else:
+        # Default to 'output' directory in the package root (qualitative-analysis/)
+        # From cli.py: parent=qualitative_analysis, parent.parent=src, parent.parent.parent=qualitative-analysis
+        path = Path(__file__).parent.parent.parent / "output"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _writer(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, Any]:
@@ -110,8 +136,18 @@ def _writer(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, Any]:
     return writer, handle
 
 
-async def _run() -> int:
-    args = _parse_args()
+async def run_figurative_detect(args: argparse.Namespace) -> int:
+    """
+    Run figurative language detection with the given arguments.
+    
+    This is the main detection logic, callable from both standalone and unified CLI.
+    
+    Args:
+        args: Parsed arguments namespace with detection configuration
+    
+    Returns:
+        Exit code (0 for success)
+    """
     input_path = Path(args.input_csv)
     if not input_path.exists():
         raise SystemExit(f"Input CSV not found: {input_path}")
@@ -124,9 +160,18 @@ async def _run() -> int:
     output_dir = _resolve_output_dir(input_path, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+    start_time = datetime.now()
     run_dir = output_dir / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     output_prefix = f"{input_path.stem}_figurative"
+
+    # Stats accumulator
+    stats = {
+        "texts_processed": 0,
+        "windows_analyzed": 0,
+        "instances_found": 0,
+        "errors": 0,
+    }
 
     window_size = args.window_size
     stride = args.stride
@@ -158,6 +203,7 @@ async def _run() -> int:
         tokenizer_name=args.tokenizer,
         return_windows=write_windows,
         figurative_types=figurative_types,
+        summary_buffer_size=args.context_window,
     )
 
     summary_writer = None
@@ -216,7 +262,13 @@ async def _run() -> int:
             ],
         )
 
+
     try:
+        # First pass: count total rows for progress tracking
+        with input_path.open("r", newline="", encoding="utf-8") as handle:
+            total_rows = sum(1 for _ in csv.DictReader(handle))
+        print(f"Processing {total_rows} texts...")
+        
         with input_path.open("r", newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             if not reader.fieldnames:
@@ -236,12 +288,29 @@ async def _run() -> int:
                 text_id = row.get(args.id_col) if args.id_col else str(index)
                 text = row.get(args.text_col) or ""
 
+                # Progress display: Text N of M
+                print(f"\r[Text {index}/{total_rows}] Processing '{text_id[:30]}...'", end="", flush=True)
+
                 error = ""
                 result = None
                 try:
                     result = await detector.detect(text)
                 except Exception as exc:
                     error = str(exc)
+                    stats["errors"] += 1
+
+                # Update stats
+                stats["texts_processed"] += 1
+                if result:
+                    window_count = result.metadata.get("window_count", 1)
+                    instance_count = len(result.instances)
+                    stats["windows_analyzed"] += window_count
+                    stats["instances_found"] += instance_count
+                    # Show completion info
+                    print(f"\r[Text {index}/{total_rows}] '{text_id[:30]}': {window_count} windows, {instance_count} instances found")
+                else:
+                    print(f"\r[Text {index}/{total_rows}] '{text_id[:30]}': Error - {error[:50]}")
+
 
                 if write_summary and summary_writer:
                     summary_writer.writerow(
@@ -308,11 +377,57 @@ async def _run() -> int:
     if write_windows:
         print(f"Wrote windows CSV: {windows_path}")
 
+    # Write run metadata JSON
+    end_time = datetime.now()
+    metadata = {
+        "run_id": f"run_{timestamp}",
+        "timestamp_start": start_time.isoformat(),
+        "timestamp_end": end_time.isoformat(),
+        "duration_seconds": round((end_time - start_time).total_seconds(), 2),
+        "cli_args": {
+            "input_csv": str(input_path),
+            "text_col": args.text_col,
+            "id_col": args.id_col,
+            "output": args.output,
+            "model": args.model,
+            "base_url": args.base_url,
+            "window_size": window_size,
+            "stride": stride,
+            "chunk_unit": args.chunk_unit,
+            "tokenizer": args.tokenizer,
+            "no_windowing": args.no_windowing,
+            "threshold": args.threshold,
+            "context_window": args.context_window,
+            "prompt_version": args.prompt_version,
+            "types": figurative_types,
+            "log_llm": args.log_llm,
+        },
+        "stats": stats,
+        "outputs": {
+            "summary": str(summary_path) if write_summary else None,
+            "instances": str(instances_path) if write_instances else None,
+            "windows": str(windows_path) if write_windows else None,
+        },
+        "package_version": "0.1.0",
+    }
+    
+    metadata_path = run_dir / "run_metadata.json"
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Wrote run metadata: {metadata_path}")
+
     return 0
 
 
 def main() -> None:
-    raise SystemExit(asyncio.run(_run()))
+    """
+    Legacy entry point for standalone CLI.
+    
+    DEPRECATED: Use `qa figurative detect` instead.
+    """
+    emit_deprecation_warning("qualitative-analysis", "qa figurative detect")
+    args = _parse_args()
+    raise SystemExit(asyncio.run(run_figurative_detect(args)))
 
 
 if __name__ == "__main__":

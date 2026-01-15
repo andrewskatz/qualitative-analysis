@@ -31,8 +31,16 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
+viz = [
+    "networkx>=3.0.0",
+    "matplotlib>=3.5.0",
+    "umap-learn>=0.5.0",
+    "hdbscan>=0.8.0",
+    "adjustText>=1.0.0",
+]
 
 [project.scripts]
+qa = "qualitative_analysis.unified_cli:main"
 qualitative-analysis = "qualitative_analysis.cli:main"
 qualitative-relationships = "qualitative_analysis.relationships_cli:main"
 qualitative-domains = "qualitative_analysis.figurative.domains_cli:main"

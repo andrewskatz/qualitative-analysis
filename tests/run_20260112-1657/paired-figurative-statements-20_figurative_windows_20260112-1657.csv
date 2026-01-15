@@ -1,0 +1,62 @@
+text_id,window_index,window_text,has_figurative,confidence,instances_count,summary
+1,0,"The project was on life support. After months of setbacks, the team finally pulled the plug.",True,0.99,2,"- The project was in a critical, failing state, described as being on life support.
+- It experienced months of setbacks and difficulties.
+- Ultimately, the team decided to terminate the project, metaphorically ""pulling the plug""."
+2,0,"The patient was on life support. After months in the hospital, the family finally pulled the plug from the machine.",False,0.92,0,"- A patient was placed on life support during an extended hospital stay.
+- The hospitalization lasted for several months.
+- The patient's family ultimately decided to discontinue life support by pulling the plug."
+3,0,"John walked into the interview with confidence. He was a lion entering his territory, ready to claim what was rightfully his.",True,0.99,1,"- John enters an interview exuding confidence, likened to a lion in its own domain.
+- The metaphor emphasizes his assertive mindset and readiness to claim success.
+- The tone is bold and self-assured, highlighting personal ambition."
+4,0,"John walked into the zoo exhibit with caution. A lion was entering its territory, ready to claim the space that was rightfully its.",False,0.98,0,"- John cautiously enters a zoo exhibit.
+- A lion is moving into its own territory within the exhibit.
+- The scene conveys tension as the lion prepares to claim its rightful space."
+5,0,"The old library was a treasure chest of knowledge. Books lined the walls like precious gems, each one containing worlds waiting to be discovered.",True,0.99,3,"- The passage describes an old library as a treasure chest of knowledge.
+- Books are metaphorically compared to precious gems lining the walls.
+- The tone is vivid and reverent, emphasizing the discovery potential within each book."
+6,0,"The old attic contained a treasure chest from the estate sale. Jewelry lined the compartments with precious gems, each piece carefully wrapped and waiting to be appraised.",False,0.99,0,"- An old attic houses a treasure chest acquired from an estate sale.
+- The chest's compartments are filled with jewelry and precious gems, each piece neatly wrapped.
+- All items are awaiting appraisal."
+7,0,"The news hit her hard. She stood frozen, like a statue in the town square, unable to process what she had just heard.",True,0.99,3,"- A piece of news profoundly affects the subject, striking her emotionally.
+- She reacts by standing frozen, likened to a statue in the town square, emphasizing her shock.
+- The intensity of the news leaves her unable to comprehend or process what she just heard."
+8,0,"The ball hit her hard during practice. She stood there for a moment, starting at a statue, before shaking her head and continuing the game.",False,0.97,0,"- During practice, a ball struck her forcefully.
+- She paused briefly, gazing at a nearby statue.
+- She shook her head to recover from the impact.
+- She resumed participation in the game."
+9,0,The company's stock plummeted overnight. Investors watched in horror as years of growth evaporated into thin air.,True,0.97,2,"- The company's stock experienced a sharp overnight decline.
+- Investors observed the drop with horror and concern.
+- Years of prior growth were effectively erased in the market downturn."
+10,0,The puddle on the sidewalk disappeared overnight. Pedestrians watched as the water evaporated in the morning sun.,False,0.99,0,"- A puddle on the sidewalk vanished overnight.
+- Pedestrians observed the water evaporating under the morning sun.
+- The description is brief and observational, focusing on a simple natural occurrence."
+11,0,The garden had been neglected for years. Weeds had declared victory and now ruled over their conquered territory with thorny authority.,True,0.99,3,"- The garden has been abandoned for years, leading to severe neglect.
+- Weeds have overtaken the space, symbolically declaring victory over the garden.
+- The weeds now dominate the area, described with vivid, thorny authority."
+12,0,The garden had been neglected for years. Weeds had spread throughout and now covered the ground with thorny stems.,False,0.99,0,"- The garden has suffered long-term neglect.
+- Weeds have proliferated throughout the area.
+- The ground is now covered with thorny stems."
+13,0,"The words hung in the air between them. Neither wanted to reach out and grab them, afraid of what might happen if they acknowledged the truth.",True,0.98,2,"- A tense moment of unspoken communication is depicted, with words lingering between two people.
+- Both individuals are reluctant to address the truth, fearing the consequences of acknowledgment.
+- The passage conveys a contemplative, uneasy tone highlighting emotional hesitation."
+14,0,"The banner hung in the air between them, suspended by wires. Neither wanted to reach out and grab it, afraid they might tear the delicate fabric.",False,0.98,0,"- A banner is suspended in the air between two individuals, held up by wires.
+- Both individuals hesitate to touch the banner, fearing they might damage its delicate fabric.
+- The passage conveys a tone of tension and careful restraint."
+15,0,"The deadline approached with relentless determination. Each tick of the clock was a footstep drawing nearer, hunting her down.",True,0.99,3,"- The text centers on an impending deadline that is portrayed as relentless and inevitable.
+- Time is personified, with each clock tick likened to a footstep that draws nearer and pursues the subject, referred to as ""her.""
+- The tone is urgent and tense, using vivid metaphor to emphasize pressure and inevitability."
+16,0,"The footsteps approached with relentless determination. Each footstep was louder as the security guard walked down the hallway, checking each office.",True,0.95,1,"- A security guard moves down a hallway with determined, increasingly loud footsteps.
+- The guard is methodically checking each office as they proceed.
+- The tone conveys a sense of relentless vigilance and tension."
+17,0,"Memory is a fickle companion. One moment it shows you vivid scenes from your past, and the next it abandons you when you need it most.",True,0.99,2,"- Memory is portrayed as an unreliable companion that can be both vivid and absent.
+- It can vividly recall past scenes one moment, highlighting its capacity for detailed recollection.
+- The next moment, memory may fail, especially when it is most needed, emphasizing its fickle nature."
+18,0,"My travel companion was fickle. One moment he wanted to visit museums, and the next he changed those plans to go to the beach instead.",False,0.98,0,"- The narrator describes a travel companion who is indecisive and changes preferences frequently.
+- Initially, the companion wants to visit museums, indicating an interest in cultural activities.
+- He then abruptly switches plans to go to the beach, showing a shift to leisure and relaxation."
+19,0,"The old house creaked and groaned in the wind. It was telling stories of generations past, whispering secrets only it remembered.",True,0.98,3,"- The old house is described as creaking and groaning in the wind, creating an atmospheric setting.
+- It serves as a narrator of past generations, implying a deep historical presence.
+- The house whispers secret memories, suggesting a mysterious and nostalgic tone."
+20,0,The old man creaked and groaned as he stood up. He was telling stories of generations past and whispering details only he remembered.,False,0.95,0,"- An elderly man physically struggles, creaking and groaning as he rises.
+- He shares stories from past generations, acting as a living repository of history.
+- His narration includes whispered, unique details that only he remembers."

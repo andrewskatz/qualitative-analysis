@@ -1,0 +1,7 @@
+text_id,window_index,window_text,has_figurative,confidence,instances_count,summary
+1,0,"The project was on life support. After months of setbacks, the team finally pulled the plug.",True,0.98,2,"- The project was濒临 failure, described as being 'on life support' due to prolonged difficulties.
+- The team faced months of setbacks that hindered progress and sustainability.
+- Ultimately, the team decided to terminate the project, symbolically 'pulling the plug' on its continuation."
+2,0,"The patient was on life support. After months in the hospital, the family finally pulled the plug from the machine.",True,0.95,1,"- A patient was maintained on life support for several months in a hospital.
+- The patient's family made the decision to discontinue life support.
+- The family ultimately turned off the life-support machine, marking the end of treatment."

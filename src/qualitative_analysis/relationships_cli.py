@@ -1,5 +1,8 @@
 """
 CLI for running relationship extraction on CSV files.
+
+This module can be used standalone via `qualitative-relationships` command (deprecated)
+or through the unified CLI via `qa relationships detect`.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, List
 
+from qualitative_analysis.core.cli_utils import emit_deprecation_warning
 from qualitative_analysis.relationships.detector import RelationshipDetector
 
 OUTPUT_CHOICES = {
@@ -57,10 +61,12 @@ def _parse_entities(raw_value: str | None) -> List[str]:
     return [value]
 
 
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Run relationship extraction on a CSV file."
-    )
+def add_relationships_detect_args(parser: argparse.ArgumentParser) -> None:
+    """
+    Add relationship detection arguments to a parser.
+    
+    This is used by both the standalone CLI and the unified CLI.
+    """
     parser.add_argument("input_csv", help="Path to input CSV file.")
     parser.add_argument("--id-col", default=None, help="Column name for IDs (optional).")
     parser.add_argument("--text-col", default="text", help="Column name for text.")
@@ -78,7 +84,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Output directory (default: alongside input CSV).",
+        help="Output directory (default: output/).",
     )
     parser.add_argument(
         "--strategy",
@@ -173,13 +179,26 @@ def _parse_args() -> argparse.Namespace:
         default=1,
         help="Coreference resolution prompt version.",
     )
+
+
+def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments (for standalone usage)."""
+    parser = argparse.ArgumentParser(
+        description="Run relationship extraction on a CSV file."
+    )
+    add_relationships_detect_args(parser)
     return parser.parse_args()
 
 
 def _resolve_output_dir(input_path: Path, output_dir: str | None) -> Path:
     if output_dir:
-        return Path(output_dir)
-    return input_path.parent
+        path = Path(output_dir)
+    else:
+        # Default to 'output' directory in the package root (qualitative-analysis/)
+        # From relationships_cli.py: parent=qualitative_analysis, parent.parent=src, parent.parent.parent=qualitative-analysis
+        path = Path(__file__).parent.parent.parent / "output"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _writer(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, Any]:
@@ -189,8 +208,18 @@ def _writer(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, Any]:
     return writer, handle
 
 
-async def _run() -> int:
-    args = _parse_args()
+async def run_relationships_detect(args: argparse.Namespace) -> int:
+    """
+    Run relationship detection with the given arguments.
+    
+    This is the main detection logic, callable from both standalone and unified CLI.
+    
+    Args:
+        args: Parsed arguments namespace with detection configuration
+    
+    Returns:
+        Exit code (0 for success)
+    """
     if args.prompt_version is None:
         args.prompt_version = 1 if args.strategy == "two_pass" else 2
     if args.no_summaries and args.include_summaries:
@@ -391,7 +420,14 @@ async def _run() -> int:
 
 
 def main() -> None:
-    raise SystemExit(asyncio.run(_run()))
+    """
+    Legacy entry point for standalone CLI.
+    
+    DEPRECATED: Use `qa relationships detect` instead.
+    """
+    emit_deprecation_warning("qualitative-relationships", "qa relationships detect")
+    args = _parse_args()
+    raise SystemExit(asyncio.run(run_relationships_detect(args)))
 
 
 if __name__ == "__main__":
