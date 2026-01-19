@@ -763,10 +763,10 @@ Respond with ONLY the JSON, nothing else."""
             else:
                 node_cluster_colors[node_id] = (0.7, 0.7, 0.7, 0.8)  # Gray for noise
         
-        # Draw cluster regions (convex hulls) - with lighter fill
+        # Draw cluster regions (convex hulls) - skip outliers (cluster_id = -1)
         for cluster_id, members in clusters.items():
-            if cluster_id == -1 and noise_handling == "hide":
-                continue
+            if cluster_id == -1:
+                continue  # Never draw hull for outliers - they span the whole graph
             
             points = self._get_cluster_hull_points(pos, cluster_assignments, cluster_id)
             if len(points) >= 3:

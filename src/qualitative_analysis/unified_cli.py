@@ -50,10 +50,13 @@ For more information on a specific command:
     
     # Figurative language analysis
     _add_figurative_commands(subparsers)
-    
+
     # Relationship extraction
     _add_relationships_commands(subparsers)
-    
+
+    # Entity analysis
+    _add_entity_commands(subparsers)
+
     return parser
 
 
@@ -144,22 +147,30 @@ def _add_relationships_commands(
     from qualitative_analysis.relationships_cli import (
         add_relationships_detect_args,
         run_relationships_detect,
+        add_relationships_normalize_args,
+        run_relationships_normalize,
+        add_relationships_causal_args,
+        run_relationships_causal,
+        add_relationships_graph_args,
+        run_relationships_graph,
+        add_relationships_verify_args,
+        run_relationships_verify,
     )
-    
+
     rel_parser = subparsers.add_parser(
         "relationships",
         aliases=["rel"],
-        help="Entity-relationship extraction",
-        description="Extract relationships between entities in text.",
+        help="Entity-relationship extraction and analysis",
+        description="Extract, normalize, and analyze relationships between entities in text.",
     )
-    
+
     rel_subs = rel_parser.add_subparsers(
         dest="action",
         title="commands",
         description="Available relationship commands",
         metavar="ACTION",
     )
-    
+
     # detect subcommand
     detect_parser = rel_subs.add_parser(
         "detect",
@@ -168,6 +179,97 @@ def _add_relationships_commands(
     )
     add_relationships_detect_args(detect_parser)
     detect_parser.set_defaults(func=lambda args: asyncio.run(run_relationships_detect(args)))
+
+    # normalize subcommand
+    normalize_parser = rel_subs.add_parser(
+        "normalize",
+        help="Normalize/consolidate entities and relationship types",
+        description="Cluster semantically similar entities and relationship types, then merge duplicate relationships.",
+    )
+    add_relationships_normalize_args(normalize_parser)
+    normalize_parser.set_defaults(func=lambda args: asyncio.run(run_relationships_normalize(args)))
+
+    # causal subcommand
+    causal_parser = rel_subs.add_parser(
+        "causal",
+        help="Analyze relationships for causal attributes",
+        description="Classify relationships as causal/non-causal and extract polarity, certainty, and explicit/implicit attributes.",
+    )
+    add_relationships_causal_args(causal_parser)
+    causal_parser.set_defaults(func=lambda args: asyncio.run(run_relationships_causal(args)))
+
+    # graph subcommand
+    graph_parser = rel_subs.add_parser(
+        "graph",
+        help="Generate relationship network graph",
+        description="Build a relationship graph with node metrics (degree, betweenness, PageRank) and export to multiple formats.",
+    )
+    add_relationships_graph_args(graph_parser)
+    graph_parser.set_defaults(func=lambda args: asyncio.run(run_relationships_graph(args)))
+
+    # verify subcommand
+    verify_parser = rel_subs.add_parser(
+        "verify",
+        help="Verify relationships against source texts",
+        description="Use LLM second-pass verification to filter out unsupported or hallucinated relationships.",
+    )
+    add_relationships_verify_args(verify_parser)
+    verify_parser.set_defaults(func=lambda args: asyncio.run(run_relationships_verify(args)))
+
+
+def _add_entity_commands(
+    subparsers: argparse._SubParsersAction,
+) -> None:
+    """Add entity analysis subcommands."""
+    from qualitative_analysis.entity_cli import (
+        add_entity_score_args,
+        run_entity_score,
+        add_entity_consolidate_args,
+        run_entity_consolidate,
+        add_entity_viz_args,
+        run_entity_viz,
+    )
+
+    entity_parser = subparsers.add_parser(
+        "entity",
+        aliases=["ent"],
+        help="Entity analysis (scoring, consolidation, visualization)",
+        description="Score, consolidate, and visualize entities extracted from text.",
+    )
+
+    entity_subs = entity_parser.add_subparsers(
+        dest="action",
+        title="commands",
+        description="Available entity commands",
+        metavar="ACTION",
+    )
+
+    # score subcommand
+    score_parser = entity_subs.add_parser(
+        "score",
+        help="Score entities along multiple dimensions",
+        description="Score entities using LLM analysis with uncertainty quantification through multiple runs.",
+    )
+    add_entity_score_args(score_parser)
+    score_parser.set_defaults(func=lambda args: asyncio.run(run_entity_score(args)))
+
+    # consolidate subcommand (placeholder)
+    consolidate_parser = entity_subs.add_parser(
+        "consolidate",
+        help="Consolidate/deduplicate entities (coming soon)",
+        description="Semantic deduplication of entities using embeddings.",
+    )
+    add_entity_consolidate_args(consolidate_parser)
+    consolidate_parser.set_defaults(func=lambda args: asyncio.run(run_entity_consolidate(args)))
+
+    # viz subcommand (placeholder)
+    viz_parser = entity_subs.add_parser(
+        "viz",
+        help="Visualize scored entities (coming soon)",
+        description="Generate ternary plots, radar charts, and heatmaps for scored entities.",
+    )
+    add_entity_viz_args(viz_parser)
+    viz_parser.set_defaults(func=lambda args: asyncio.run(run_entity_viz(args)))
 
 
 def main() -> int:

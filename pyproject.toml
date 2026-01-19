@@ -37,6 +37,7 @@ viz = [
     "umap-learn>=0.5.0",
     "hdbscan>=0.8.0",
     "adjustText>=1.0.0",
+    "python-ternary>=1.0.8",  # Ternary plots for entity scoring visualization
 ]
 
 [project.scripts]
@@ -51,6 +52,7 @@ include = [
     "src/qualitative_analysis/figurative/prompts/*.txt",
     "src/qualitative_analysis/figurative/domains/prompts/*.txt",
     "src/qualitative_analysis/relationships/prompts/*.txt",
+    "src/qualitative_analysis/entity/prompts/*.txt",
 ]
 
 [tool.pytest.ini_options]

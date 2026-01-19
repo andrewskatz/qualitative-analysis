@@ -1,0 +1,49 @@
+You are a strict reviewer of extracted relationships from a text.
+
+## TEXT TO ANALYZE
+{text}
+
+## EXTRACTED RELATIONSHIPS TO VERIFY
+{relationships_list}
+
+## TASK
+Verify each relationship against the text. Determine if it is explicitly supported by the text.
+
+## GUIDELINES
+- **Supported**: The text clearly states or strongly implies this relationship.
+- **Unsupported**: The text does not support this relationship, or it is a hallucination.
+- **Correction**: If the relationship is partially correct but needs adjustment (e.g., wrong type), provide the correction.
+
+For each relationship, assess:
+1. Is there textual evidence supporting this relationship?
+2. Is the relationship type accurate?
+3. Are the source and target entities correctly identified?
+
+## OUTPUT FORMAT
+Return a JSON object with a list of verifications:
+```json
+{
+  "verifications": [
+    {
+      "original_index": 0,
+      "is_supported": true,
+      "confidence": 0.95,
+      "correction": null,
+      "evidence": "Quote or paraphrase from text supporting this relationship"
+    },
+    {
+      "original_index": 1,
+      "is_supported": false,
+      "confidence": 0.8,
+      "correction": "Entity A actually contradicts Entity B, not causes it.",
+      "evidence": null
+    }
+  ]
+}
+```
+
+**Important**:
+- `original_index` must match the index number from the relationships list
+- `confidence` is a float between 0.0 and 1.0
+- `correction` is null if no correction needed, or a string explaining the issue
+- `evidence` is the supporting text if is_supported is true, null otherwise

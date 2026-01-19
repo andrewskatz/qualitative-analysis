@@ -1,0 +1,134 @@
+You are an expert analyst specializing in multi-dimensional entity classification. Your task is to analyze a given entity or concept and score it along multiple dimensions based on the provided framework.
+
+<instructions>
+
+PART 1: BACKGROUND INFORMATION
+
+You will be scoring entities along the following dimensions:
+
+{dimension_definitions}
+
+Each dimension should be scored on {scale_range_description}, where:
+- Lower values indicate less alignment, relevance, or intensity for that dimension
+- Higher values indicate more alignment, relevance, or intensity for that dimension
+
+IMPORTANT: An entity can have high scores across multiple dimensions simultaneously. A high score in one dimension does not necessarily mean low scores in other dimensions. Each dimension should be evaluated independently based on the entity's characteristics in the given context.
+
+{research_context}
+
+PART 2: TASK INSTRUCTIONS
+
+Follow these steps carefully:
+
+Step 1. Examine the provided entity and its context(s).
+Pay careful attention to:
+- The entity itself and what it represents
+- The context(s) where it appears
+- The specific meaning of the entity in this context (especially if the entity could have multiple meanings)
+- Any nuances or implications in how the entity is described or used
+
+Step 2. Provide your initial observations.
+Consider:
+- What are the key characteristics of this entity in this specific context?
+- How does it relate to each of the dimensions you'll be scoring?
+- What aspects of the entity are most relevant to each dimension?
+- How does this entity relate to other entities or concepts mentioned in the same context?
+
+Step 3. Assign scores for each dimension.
+Based on your reasoning, assign a score for each dimension using the scale specified for that dimension.
+- Use the dimension definitions and scale anchors provided above
+- Be consistent in your scoring approach across all entities
+- Consider the specific context provided
+- Ensure your scores fall within the specified range for each dimension
+
+Step 4. Provide justifications.
+For each dimension, provide a brief justification for your score, referencing the specific context where appropriate.
+- Explain why you assigned this particular score
+- Reference specific aspects of the entity or context that influenced your scoring
+- Be concise but clear in your reasoning
+
+PART 3: FORMATTING INSTRUCTIONS
+
+Provide your analysis in the following JSON format:
+
+{{
+  "entity": "[Name of the entity]",
+  "initial_observations": "[Your step-by-step reasoning about the entity and its characteristics]",
+  "dimension_scores": [
+    {{
+      "dimension": "[dimension_name_1]",
+      "score": 75,
+      "justification": "[Brief explanation for this score, referencing the context]"
+    }},
+    {{
+      "dimension": "[dimension_name_2]",
+      "score": 60,
+      "justification": "[Brief explanation for this score, referencing the context]"
+    }}
+  ]
+}}
+
+CRITICAL FORMATTING REQUIREMENTS:
+- The "score" field MUST be a numeric integer (e.g., 50, 75, 100), NOT a word (e.g., do NOT write "fifty")
+- Ensure you provide scores for ALL dimensions listed above
+- Ensure scores fall within the specified range for each dimension
+- Keep justifications concise but informative (1-2 sentences per dimension)
+
+</instructions>
+
+<example>
+
+Input:
+Entity: "renewable energy"
+Context: "The community invested in renewable energy infrastructure to reduce carbon emissions and create local jobs."
+
+Dimensions:
+- SOCIAL (Scale: 0-100): Human aspects including community, governance, economics, culture, and equity
+- ECOLOGICAL (Scale: 0-100): Natural environment and biophysical processes
+- TECHNOLOGICAL (Scale: 0-100): Human-made systems and engineered infrastructure
+
+Output:
+{{
+  "entity": "renewable energy",
+  "initial_observations": "1. Renewable energy refers to energy from sources that are naturally replenished (solar, wind, hydro, etc.). 2. In this context, it is mentioned as infrastructure that the community invested in. 3. The stated purposes are reducing carbon emissions (environmental benefit) and creating local jobs (social/economic benefit). 4. The term 'infrastructure' suggests technological systems and engineered solutions. 5. This entity connects social (jobs, community investment), ecological (emissions reduction), and technological (infrastructure) dimensions.",
+  "dimension_scores": [
+    {{
+      "dimension": "social",
+      "score": 75,
+      "justification": "Strong social dimension through community investment and job creation as explicitly mentioned in the context."
+    }},
+    {{
+      "dimension": "ecological",
+      "score": 85,
+      "justification": "Primary ecological benefit through carbon emissions reduction, directly addressing environmental concerns."
+    }},
+    {{
+      "dimension": "technological",
+      "score": 90,
+      "justification": "Core technological nature as infrastructure involving engineered systems for energy generation."
+    }}
+  ]
+}}
+
+</example>
+
+Now analyze the following entity:
+
+<entity_to_analyze>
+Entity: {entity}
+</entity_to_analyze>
+
+<context>
+{context}
+</context>
+
+Remember to:
+- Be thorough in your reasoning but concise in your scoring
+- Pay special attention to the specific context provided
+- If the entity could have multiple meanings, focus on the meaning most relevant to the context
+- Provide scores for ALL dimensions using the specified scale ranges
+- Include brief justifications that reference the context
+- CRITICAL: All "score" values MUST be numeric integers (e.g., 50, 75, 100), never words
+
+Begin your analysis now.
+

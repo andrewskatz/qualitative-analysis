@@ -1,0 +1,94 @@
+You are an expert in Causal Analysis and Logic.
+
+Your task is to analyze a specific relationship between two entities and determine if it represents a **Causal Relationship** (Cause-Effect).
+If it is causal, you must determine the **Polarity**, **Certainty**, and whether the causality is **Explicit** or **Implicit**.
+
+### INPUT DATA
+**Source Entity**: {source}
+**Target Entity**: {target}
+**Relationship Type**: {relationship}
+**Evidence Snippets**:
+{evidence}
+
+### DEFINITIONS
+
+1.  **Causal Relationship**: The Source entity actively influences, produces, triggers, or causes a change in the state of the Target entity.
+    *   *Examples*: "Rain causes flooding", "Interest rates reduce inflation", "Virus triggers immune response".
+    *   **NOT Causal**:
+        *   **Prerequisites/Requirements**: "A requires B", "A needs B". (This is dependency, not causality).
+        *   **Attributes**: "Apple is a company".
+        *   **Locations**: "Paris is in France".
+        *   **Correlations**: "A is related to B" (without direction of influence).
+
+2.  **Polarity**:
+    *   **Positive**: The Source *increases*, *promotes*, *stimulates*, *enables*, or *causes* the Target to happen/increase.
+    *   **Negative**: The Source *decreases*, *inhibits*, *prevents*, *blocks*, or *reduces* the Target.
+    *   **Neutral**: The Source causes the Target, but the direction is unspecified or complex.
+
+3.  **Certainty**:
+    *   **Certain**: The text states it as a fact (e.g., "causes", "leads to", "results in").
+    *   **Likely**: The text suggests it is probable (e.g., "suggests", "likely", "estimated to").
+    *   **Possible**: The text is speculative or conditional (e.g., "may", "could", "might").
+
+4.  **Explicit vs Implicit**:
+    *   **Explicit**: The text uses direct causal verbs (e.g., "causes", "leads to", "results in", "triggers", "prevents").
+    *   **Implicit**: The causality is inferred from context or sequence (e.g., "The storm passed. The streets were flooded." -> Implicitly causal).
+
+### OUTPUT FORMAT
+Return a single JSON object. The `reasoning` field MUST come first and contain your step-by-step analysis BEFORE you determine your answers.
+
+*   `reasoning` (string): Your step-by-step analysis of the evidence. Consider: What verbs are used? Is there a cause-effect relationship or just a dependency/requirement? What is the direction of influence?
+*   `is_causal` (boolean): True if the relationship is causal (and NOT just a prerequisite).
+*   `polarity` (string): "positive", "negative", or "neutral" (only if is_causal is True, else null).
+*   `certainty` (string): "certain", "likely", or "possible" (only if is_causal is True, else null).
+*   `explicit_vs_implicit` (string): "explicit" or "implicit" (only if is_causal is True, else null).
+
+### EXAMPLES
+
+**Input**:
+Source: Cybersecurity
+Target: Secure Systems
+Relationship: requires
+Evidence: ["Effective cybersecurity requires robust secure systems."]
+
+**Output**:
+{{
+  "reasoning": "The evidence uses the verb 'requires', which indicates a dependency or prerequisite relationship. Cybersecurity depends on secure systems, but it does not cause or produce secure systems. This is not a cause-effect relationship.",
+  "is_causal": false,
+  "polarity": null,
+  "certainty": null,
+  "explicit_vs_implicit": null
+}}
+
+**Input**:
+Source: High Interest Rates
+Target: Inflation
+Relationship: reduces
+Evidence: ["Central banks raised rates to combat rising inflation.", "Higher rates effectively reduced the inflation rate."]
+
+**Output**:
+{{
+  "reasoning": "The evidence states that higher rates 'reduced' the inflation rate. The verb 'reduced' indicates a direct causal effect where the source (high interest rates) actively decreases the target (inflation). This is explicit causation with negative polarity (reduction) and stated as fact.",
+  "is_causal": true,
+  "polarity": "negative",
+  "certainty": "certain",
+  "explicit_vs_implicit": "explicit"
+}}
+
+**Input**:
+Source: Rain
+Target: Picnic
+Relationship: ruined
+Evidence: ["The sudden downpour ruined our plans for a picnic."]
+
+**Output**:
+{{
+  "reasoning": "The evidence uses 'ruined' to describe how the rain affected the picnic plans. This is a clear cause-effect: the rain (source) caused a negative outcome for the picnic (target). The causal verb 'ruined' is explicit and stated as fact.",
+  "is_causal": true,
+  "polarity": "negative",
+  "certainty": "certain",
+  "explicit_vs_implicit": "explicit"
+}}
+
+### YOUR ANALYSIS
+Return ONLY the JSON object. Remember: the `reasoning` field must come FIRST and contain your analysis BEFORE you determine your answers.
