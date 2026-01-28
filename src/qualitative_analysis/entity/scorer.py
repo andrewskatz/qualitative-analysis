@@ -58,6 +58,7 @@ class EntityScorer:
         self,
         prompt_template: Optional[str] = None,
         temperature: float = 0.3,
+        verbose: bool = False,
     ):
         """
         Initialize the entity scorer.
@@ -65,8 +66,10 @@ class EntityScorer:
         Args:
             prompt_template: Custom prompt template string. If None, uses default.
             temperature: LLM temperature for generation (default 0.3 for stability).
+            verbose: If True, print prompts and responses to stdout.
         """
         self.temperature = temperature
+        self.verbose = verbose
 
         if prompt_template:
             self._prompt_template = prompt_template
@@ -282,11 +285,26 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
 
         logger.debug(f"Scoring '{entity}' (run {run_number})")
 
+        # Print prompt if verbose
+        if self.verbose:
+            print("\n" + "=" * 80)
+            print(f"ENTITY: {entity} (Run {run_number})")
+            print("=" * 80)
+            print("\n--- PROMPT ---")
+            print(prompt)
+            print("-" * 40)
+
         # Call LLM
         response = await llm_provider.generate(
             prompt=prompt,
             temperature=self.temperature,
         )
+
+        # Print response if verbose
+        if self.verbose:
+            print("\n--- RESPONSE ---")
+            print(response)
+            print("=" * 80)
 
         # Parse response
         parsed = self._parse_response(response, dimensions)

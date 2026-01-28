@@ -1142,13 +1142,52 @@ def add_relationships_graph_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--layout",
         default="spring",
-        choices=["spring", "circular", "kamada_kawai", "semantic"],
-        help="Graph layout algorithm (default: spring).",
+        choices=["spring", "circular", "kamada_kawai", "semantic", "hierarchical", "community"],
+        help="Graph layout algorithm. 'community' detects groups via Louvain (default: spring).",
+    )
+    parser.add_argument(
+        "--layout-spacing",
+        type=float,
+        default=1.0,
+        help="Multiplier for node spacing in layouts (default: 1.0).",
+    )
+    parser.add_argument(
+        "--color-by",
+        default="polarity",
+        choices=["polarity", "type", "none"],
+        help="Edge coloring mode for causal graphs (default: polarity).",
+    )
+    parser.add_argument(
+        "--labels",
+        default="all",
+        help="Label display mode: all, none, top:N, pagerank:N (default: all).",
+    )
+    parser.add_argument(
+        "--scope",
+        default="aggregate",
+        help="Graph scope: aggregate, individual, or text:ID (default: aggregate).",
+    )
+    parser.add_argument(
+        "--show-legend",
+        action="store_true",
+        default=True,
+        help="Show legend for colors and styles (default: True).",
+    )
+    parser.add_argument(
+        "--no-legend",
+        action="store_true",
+        help="Hide legend.",
     )
     parser.add_argument(
         "--embedding-model",
-        default="all-MiniLM-L6-v2",
-        help="Embedding model for semantic layout (default: all-MiniLM-L6-v2).",
+        default="Qwen/Qwen3-Embedding-0.6B",
+        help="Embedding model for semantic layout (default: Qwen/Qwen3-Embedding-0.6B). Alternative: 'all-MiniLM-L6-v2' (faster).",
+    )
+    parser.add_argument(
+        "--umap-min-dist",
+        type=float,
+        default=0.3,
+        help="UMAP min_dist parameter (default: 0.3). Higher values spread nodes more for better clustering.",
     )
     parser.add_argument(
         "--min-edge-weight",
@@ -1197,6 +1236,43 @@ def add_relationships_graph_args(parser: argparse.ArgumentParser) -> None:
         "--no-causal",
         action="store_true",
         help="Exclude causal attributes from graph.",
+    )
+    parser.add_argument(
+        "--cluster-nodes",
+        action="store_true",
+        help="Cluster nodes by semantic similarity and color by cluster (requires --layout semantic).",
+    )
+    parser.add_argument(
+        "--min-cluster-size",
+        type=int,
+        default=3,
+        help="Minimum nodes per cluster when using --cluster-nodes (default: 3).",
+    )
+    parser.add_argument(
+        "--no-cluster-hulls",
+        action="store_true",
+        help="Hide convex hull regions around clusters.",
+    )
+    parser.add_argument(
+        "--cluster-label-min-size",
+        type=int,
+        default=5,
+        help="Minimum cluster size to show label (reduces clutter). Default: 5.",
+    )
+    parser.add_argument(
+        "--cluster-label-model",
+        default=None,
+        help="LLM model to generate descriptive labels for clusters (e.g., 'qwen3:8b'). Requires --cluster-nodes.",
+    )
+    parser.add_argument(
+        "--cluster-label-base-url",
+        default="http://localhost:11434",
+        help="Base URL for cluster label LLM provider (default: http://localhost:11434).",
+    )
+    parser.add_argument(
+        "--show-node-roles",
+        action="store_true",
+        help="Show different node shapes by role: triangle for source-only (causes), square for target-only (effects), circle for both (mediators).",
     )
 
 
@@ -1262,10 +1338,72 @@ async def run_relationships_graph(args: argparse.Namespace) -> int:
     except ValueError:
         figsize = (16, 12)
 
-    # Build graph
-    print(f"Building graph with min_edge_weight={args.min_edge_weight}")
+    # Determine legend visibility
+    show_legend = args.show_legend and not args.no_legend
+
+    # Handle scope
     graph = RelationshipGraph()
     include_causal = args.include_causal and not args.no_causal
+
+    # Determine clustering options
+    cluster_nodes = args.cluster_nodes
+    show_cluster_hulls = not args.no_cluster_hulls
+
+    # Get cluster labeling options
+    cluster_label_model = args.cluster_label_model
+    cluster_label_base_url = args.cluster_label_base_url
+    show_node_roles = args.show_node_roles
+
+    if args.scope == "individual":
+        # Build individual graphs per text_id
+        print(f"Building individual graphs per text_id...")
+        results = graph.build_individual_graphs(
+            relationships,
+            output_dir,
+            formats=formats,
+            layout=args.layout,
+            embedding_model=args.embedding_model,
+            umap_min_dist=args.umap_min_dist,
+            color_by=args.color_by,
+            labels_mode=args.labels,
+            show_legend=show_legend,
+            layout_spacing=args.layout_spacing,
+            min_edge_weight=args.min_edge_weight,
+            cluster_nodes=cluster_nodes,
+            min_cluster_size=args.min_cluster_size,
+            show_cluster_hulls=show_cluster_hulls,
+            cluster_label_min_size=args.cluster_label_min_size,
+            cluster_label_model=cluster_label_model,
+            cluster_label_base_url=cluster_label_base_url,
+            show_node_roles=show_node_roles,
+        )
+        print(f"\nBuilt {len(results)} individual graphs:")
+        for text_id, paths in results.items():
+            print(f"  {text_id}: {len(paths)} files")
+        return 0
+
+    elif args.scope.startswith("text:"):
+        # Filter to specific text_id
+        target_text_id = args.scope[5:]  # Remove "text:" prefix
+        filtered_rels = []
+        for rel in relationships:
+            text_ids = []
+            if hasattr(rel, "text_ids") and rel.text_ids:
+                text_ids = rel.text_ids
+            elif hasattr(rel, "text_id") and rel.text_id:
+                text_ids = [rel.text_id]
+            if target_text_id in text_ids:
+                filtered_rels.append(rel)
+
+        if not filtered_rels:
+            print(f"No relationships found for text_id: {target_text_id}")
+            return 1
+
+        print(f"Filtered to {len(filtered_rels)} relationships for text_id: {target_text_id}")
+        relationships = filtered_rels
+
+    # Build aggregate graph
+    print(f"Building graph with min_edge_weight={args.min_edge_weight}")
     graph_data = graph.build(
         relationships,
         include_causal=include_causal,
@@ -1306,10 +1444,22 @@ async def run_relationships_graph(args: argparse.Namespace) -> int:
             png_path,
             layout=args.layout,
             embedding_model=args.embedding_model,
+            umap_min_dist=args.umap_min_dist,
             figsize=figsize,
             dpi=args.dpi,
             show_edge_labels=args.show_edge_labels,
             title=args.title,
+            color_by=args.color_by,
+            labels_mode=args.labels,
+            show_legend=show_legend,
+            layout_spacing=args.layout_spacing,
+            cluster_nodes=cluster_nodes,
+            min_cluster_size=args.min_cluster_size,
+            show_cluster_hulls=show_cluster_hulls,
+            cluster_label_min_size=args.cluster_label_min_size,
+            cluster_label_model=cluster_label_model,
+            cluster_label_base_url=cluster_label_base_url,
+            show_node_roles=show_node_roles,
         )
         saved_paths.append(str(png_path))
         print(f"Wrote graph PNG: {png_path}")

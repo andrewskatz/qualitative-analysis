@@ -228,6 +228,10 @@ def _add_entity_commands(
         run_entity_consolidate,
         add_entity_viz_args,
         run_entity_viz,
+        add_entity_compare_args,
+        run_entity_compare,
+        add_entity_prepare_scoring_args,
+        run_entity_prepare_scoring,
     )
 
     entity_parser = subparsers.add_parser(
@@ -262,14 +266,33 @@ def _add_entity_commands(
     add_entity_consolidate_args(consolidate_parser)
     consolidate_parser.set_defaults(func=lambda args: asyncio.run(run_entity_consolidate(args)))
 
-    # viz subcommand (placeholder)
+    # viz subcommand
     viz_parser = entity_subs.add_parser(
         "viz",
-        help="Visualize scored entities (coming soon)",
-        description="Generate ternary plots, radar charts, and heatmaps for scored entities.",
+        help="Visualize scored entities",
+        description="Generate ternary plots and radar charts for scored entities.",
     )
     add_entity_viz_args(viz_parser)
     viz_parser.set_defaults(func=lambda args: asyncio.run(run_entity_viz(args)))
+
+    # compare subcommand
+    compare_parser = entity_subs.add_parser(
+        "compare",
+        help="Compare entity scores across participants",
+        description="Compute distances between participants and generate comparison visualizations.",
+    )
+    add_entity_compare_args(compare_parser)
+    compare_parser.set_defaults(func=lambda args: asyncio.run(run_entity_compare(args)))
+
+    # prepare-scoring subcommand
+    prep_score_parser = entity_subs.add_parser(
+        "prepare-scoring",
+        aliases=["prep"],
+        help="Generate scoring input CSV with real context from windows",
+        description="Extract entity-context pairs from relationship detection windows, ensuring actual source text is used as context rather than placeholders.",
+    )
+    add_entity_prepare_scoring_args(prep_score_parser)
+    prep_score_parser.set_defaults(func=lambda args: asyncio.run(run_entity_prepare_scoring(args)))
 
 
 def main() -> int:

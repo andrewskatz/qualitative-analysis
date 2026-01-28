@@ -22,24 +22,24 @@ For each relationship, assess:
 ## OUTPUT FORMAT
 Return a JSON object with a list of verifications:
 ```json
-{
+{{
   "verifications": [
-    {
+    {{
       "original_index": 0,
       "is_supported": true,
       "confidence": 0.95,
       "correction": null,
       "evidence": "Quote or paraphrase from text supporting this relationship"
-    },
-    {
+    }},
+    {{
       "original_index": 1,
       "is_supported": false,
       "confidence": 0.8,
       "correction": "Entity A actually contradicts Entity B, not causes it.",
       "evidence": null
-    }
+    }}
   ]
-}
+}}
 ```
 
 **Important**:

@@ -41,6 +41,18 @@ from qualitative_analysis.entity.models import (
 from qualitative_analysis.entity.scorer import EntityScorer, score_entities
 from qualitative_analysis.entity.visualizer import EntityVisualizer
 from qualitative_analysis.entity.consolidator import EntityConsolidator, consolidate_entities
+from qualitative_analysis.entity.comparison import (
+    ParticipantComparison,
+    ComparisonResult,
+    GroupComparisonResult,
+    ComparisonVisualizer,
+    aitchison_distance,
+    wasserstein_distance_compositional,
+    compute_pairwise_distances,
+    compare_participants,
+    clr_transform,
+    ilr_transform,
+)
 
 __all__ = [
     # Models - Dimensions
@@ -62,4 +74,15 @@ __all__ = [
     # Consolidator
     "EntityConsolidator",
     "consolidate_entities",
+    # Comparison
+    "ParticipantComparison",
+    "ComparisonResult",
+    "GroupComparisonResult",
+    "ComparisonVisualizer",
+    "aitchison_distance",
+    "wasserstein_distance_compositional",
+    "compute_pairwise_distances",
+    "compare_participants",
+    "clr_transform",
+    "ilr_transform",
 ]

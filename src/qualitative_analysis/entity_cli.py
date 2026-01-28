@@ -104,6 +104,11 @@ def add_entity_score_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Limit number of entities to score (for testing).",
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Print LLM prompts and responses to terminal for monitoring.",
+    )
 
 
 async def run_entity_score(args: argparse.Namespace) -> int:
@@ -193,7 +198,7 @@ async def run_entity_score(args: argparse.Namespace) -> int:
         raise SystemExit(f"Provider '{args.provider}' not yet supported. Use 'ollama'.")
 
     # Initialize scorer
-    scorer = EntityScorer(temperature=args.temperature)
+    scorer = EntityScorer(temperature=args.temperature, verbose=getattr(args, 'verbose', False))
 
     # Score entities
     print(f"\nScoring {len(entities)} entities with {args.num_runs} runs each...")
@@ -696,3 +701,831 @@ def _read_scored_entities_csv(
             entities.append(entity_data)
 
     return entities
+
+
+# =============================================================================
+# ENTITY COMPARISON COMMAND
+# =============================================================================
+
+def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
+    """Add entity comparison arguments."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to input CSV file with scored entities (from 'qa entity score').",
+    )
+    parser.add_argument(
+        "--participant-col",
+        default="text_id",
+        help="Column name for participant/text IDs (default: text_id).",
+    )
+    parser.add_argument(
+        "--entity-col",
+        default="entity",
+        help="Column name for entities (default: entity).",
+    )
+    parser.add_argument(
+        "--dimensions",
+        default="social,ecological,technological",
+        help="Dimensions to compare, comma-separated (default: social,ecological,technological).",
+    )
+    parser.add_argument(
+        "--metric",
+        choices=["aitchison", "emd", "cosine", "euclidean"],
+        default="aitchison",
+        help="Distance metric for comparison (default: aitchison).",
+    )
+    parser.add_argument(
+        "--aggregate",
+        choices=["mean", "distribution"],
+        default="mean",
+        help=(
+            "How to aggregate entities per participant: "
+            "'mean' compares centroids (single point per participant), "
+            "'distribution' compares full entity distributions (EMD only, captures spread/shape). "
+            "(default: mean)"
+        ),
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory (default: creates comparison_* subdirectory).",
+    )
+    parser.add_argument(
+        "--viz",
+        default="all",
+        help=(
+            "Visualizations to generate: 'all', 'faceted', 'overlaid', 'heatmap', "
+            "'forest', 'similarity-map', or comma-separated list (default: all)."
+        ),
+    )
+    parser.add_argument(
+        "--participants",
+        default=None,
+        help="Specific participants to include, comma-separated (default: all).",
+    )
+    parser.add_argument(
+        "--show-centroids",
+        action="store_true",
+        default=True,
+        help="Show centroid markers on ternary plots (default: True).",
+    )
+    parser.add_argument(
+        "--show-hull",
+        action="store_true",
+        help="Show convex hull on faceted plots.",
+    )
+    parser.add_argument(
+        "--max-cols",
+        type=int,
+        default=4,
+        help="Maximum columns in faceted grid (default: 4).",
+    )
+    parser.add_argument(
+        "--similarity-method",
+        choices=["mds", "umap"],
+        default="mds",
+        help="Method for similarity map: 'mds' (default) or 'umap' (requires umap-learn).",
+    )
+
+    # Group comparison arguments
+    parser.add_argument(
+        "--groups",
+        default=None,
+        help=(
+            "Define groups inline: 'group1:pid1,pid2;group2:pid3,pid4'. "
+            "Compare groups instead of individuals. Only one of --groups, "
+            "--groups-file, or --group-by-col can be specified."
+        ),
+    )
+    parser.add_argument(
+        "--groups-file",
+        default=None,
+        help=(
+            "Path to JSON or CSV file defining groups. "
+            "JSON: {'group1': ['pid1', 'pid2'], ...}. "
+            "CSV: columns 'participant_id' and 'group'."
+        ),
+    )
+    parser.add_argument(
+        "--group-by-col",
+        default=None,
+        help="Column name in input CSV to use for grouping participants.",
+    )
+    parser.add_argument(
+        "--skip-individual-viz",
+        action="store_true",
+        help="When using groups, skip individual participant visualizations (only generate group visualizations).",
+    )
+
+
+# =============================================================================
+# GROUP PARSING HELPERS
+# =============================================================================
+
+
+def parse_inline_groups(groups_str: str) -> Dict[str, List[str]]:
+    """
+    Parse inline group definitions.
+
+    Format: 'group1:pid1,pid2;group2:pid3,pid4'
+
+    Args:
+        groups_str: String with group definitions.
+
+    Returns:
+        Dict mapping group names to participant ID lists.
+
+    Raises:
+        ValueError: If format is invalid.
+    """
+    groups = {}
+    for group_def in groups_str.split(";"):
+        group_def = group_def.strip()
+        if not group_def:
+            continue
+        if ":" not in group_def:
+            raise ValueError(
+                f"Invalid group definition '{group_def}'. "
+                "Expected format: 'group_name:pid1,pid2,...'"
+            )
+        name, members_str = group_def.split(":", 1)
+        name = name.strip()
+        members = [m.strip() for m in members_str.split(",") if m.strip()]
+        if not members:
+            raise ValueError(f"Group '{name}' has no members")
+        groups[name] = members
+    return groups
+
+
+def load_groups_file(path: Path) -> Dict[str, List[str]]:
+    """
+    Load groups from JSON or CSV file.
+
+    JSON format: {"group1": ["pid1", "pid2"], "group2": ["pid3", "pid4"]}
+    CSV format: columns 'participant_id' (or 'text_id') and 'group'
+
+    Args:
+        path: Path to groups file.
+
+    Returns:
+        Dict mapping group names to participant ID lists.
+
+    Raises:
+        ValueError: If file format is unknown or invalid.
+    """
+    import csv
+    import json
+
+    path = Path(path)
+
+    if path.suffix.lower() == ".json":
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("JSON file must contain a dictionary")
+        return {str(k): list(v) for k, v in data.items()}
+
+    elif path.suffix.lower() == ".csv":
+        groups: Dict[str, List[str]] = {}
+        with open(path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+
+            # Find participant column
+            fieldnames = reader.fieldnames or []
+            pid_col = None
+            for candidate in ["participant_id", "text_id", "id"]:
+                if candidate in fieldnames:
+                    pid_col = candidate
+                    break
+            if pid_col is None:
+                raise ValueError(
+                    "CSV must have 'participant_id', 'text_id', or 'id' column"
+                )
+
+            if "group" not in fieldnames:
+                raise ValueError("CSV must have 'group' column")
+
+            for row in reader:
+                pid = row[pid_col]
+                group = row["group"]
+                if group not in groups:
+                    groups[group] = []
+                groups[group].append(pid)
+
+        return groups
+
+    else:
+        raise ValueError(
+            f"Unknown groups file format: {path.suffix}. Use .json or .csv"
+        )
+
+
+def extract_groups_from_data(
+    input_path: Path,
+    group_col: str,
+    participant_col: str = "text_id",
+) -> Dict[str, List[str]]:
+    """
+    Extract groups from a column in the input data CSV.
+
+    Args:
+        input_path: Path to input CSV file.
+        group_col: Column name containing group assignments.
+        participant_col: Column name for participant IDs.
+
+    Returns:
+        Dict mapping group names to participant ID lists.
+
+    Raises:
+        ValueError: If columns not found.
+    """
+    import csv
+
+    groups: Dict[str, List[str]] = {}
+    seen_participants: Dict[str, str] = {}  # Track pid -> group for deduplication
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+
+        if participant_col not in fieldnames:
+            raise ValueError(f"Participant column '{participant_col}' not found in data")
+        if group_col not in fieldnames:
+            raise ValueError(f"Group column '{group_col}' not found in data")
+
+        for row in reader:
+            pid = row[participant_col]
+            group = row[group_col]
+
+            # Skip if already seen (each participant belongs to one group)
+            if pid in seen_participants:
+                continue
+
+            seen_participants[pid] = group
+            if group not in groups:
+                groups[group] = []
+            groups[group].append(pid)
+
+    return groups
+
+
+async def run_entity_compare(args: argparse.Namespace) -> int:
+    """
+    Run entity comparison with the given arguments.
+
+    This computes distances between participants and generates
+    comparison visualizations (faceted ternary, overlaid ternary, heatmap).
+    Supports both individual pairwise comparison and group-level comparison.
+
+    Args:
+        args: Parsed arguments namespace with comparison configuration
+
+    Returns:
+        Exit code (0 for success)
+    """
+    from qualitative_analysis.entity.comparison import (
+        ParticipantComparison,
+        ComparisonVisualizer,
+        GroupComparisonResult,
+    )
+
+    input_path = Path(args.input_csv)
+    if not input_path.exists():
+        raise SystemExit(f"Input CSV not found: {input_path}")
+
+    # Check for mutually exclusive group options
+    group_options = [
+        args.groups is not None,
+        args.groups_file is not None,
+        args.group_by_col is not None,
+    ]
+    if sum(group_options) > 1:
+        raise SystemExit(
+            "Error: Only one of --groups, --groups-file, or --group-by-col can be specified."
+        )
+
+    # Determine output directory
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        parent = input_path.parent
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+        output_dir = parent / f"comparison_{timestamp}"
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Parse dimensions
+    dimension_names = [d.strip().lower() for d in args.dimensions.split(",")]
+    print(f"Comparing dimensions: {dimension_names}")
+
+    # Load scores
+    print(f"Loading scored entities from: {input_path}")
+    comparison = ParticipantComparison()
+    comparison.load_scores(
+        input_path,
+        participant_col=args.participant_col,
+        entity_col=args.entity_col,
+        dimensions=dimension_names,
+    )
+
+    n_participants = len(comparison.scores_by_participant)
+    print(f"Loaded {n_participants} participants")
+
+    if n_participants < 2:
+        print("Need at least 2 participants for comparison.")
+        return 1
+
+    # Parse participants filter
+    participants = None
+    if args.participants:
+        participants = [p.strip() for p in args.participants.split(",")]
+        participants = [p for p in participants if p in comparison.scores_by_participant]
+        print(f"Filtering to {len(participants)} participants: {participants}")
+
+    # Parse group definitions (if any)
+    groups = None
+    if args.groups:
+        print(f"\nParsing inline group definitions...")
+        groups = parse_inline_groups(args.groups)
+    elif args.groups_file:
+        groups_file_path = Path(args.groups_file)
+        if not groups_file_path.exists():
+            raise SystemExit(f"Groups file not found: {groups_file_path}")
+        print(f"\nLoading groups from: {groups_file_path}")
+        groups = load_groups_file(groups_file_path)
+    elif args.group_by_col:
+        print(f"\nExtracting groups from column: {args.group_by_col}")
+        groups = extract_groups_from_data(
+            input_path, args.group_by_col, args.participant_col
+        )
+
+    # Aggregation mode
+    aggregate_mode = getattr(args, 'aggregate', 'mean')
+    if aggregate_mode == "distribution" and args.metric not in ("emd", "wasserstein"):
+        print(f"\nNote: --aggregate=distribution is only meaningful with --metric=emd")
+        print(f"      Using metric '{args.metric}' will compare centroids regardless.")
+
+    # Handle group comparison
+    group_result = None
+    if groups:
+        print(f"\nGroups defined: {list(groups.keys())}")
+        for gname, members in groups.items():
+            print(f"  {gname}: {len(members)} participants")
+
+        # Set groups and get excluded participants
+        excluded = comparison.set_groups(groups)
+
+        # Compute group-level distances
+        print(f"\nComputing group distances using {args.metric} metric (aggregate={aggregate_mode})...")
+        group_result = comparison.compute_group_distances(
+            metric=args.metric, aggregate=aggregate_mode
+        )
+
+        # Print group comparison summary
+        print(group_result.summary_str())
+
+        # Save group comparison results JSON
+        group_results_path = output_dir / "group_comparison_results.json"
+        with open(group_results_path, "w", encoding="utf-8") as f:
+            json.dump(group_result.to_dict(), f, indent=2)
+        print(f"\nSaved group results to: {group_results_path}")
+
+    # Compute individual pairwise distances (always, for visualizations)
+    print(f"\nComputing pairwise distances using {args.metric} metric (aggregate={aggregate_mode})...")
+    result = comparison.compute_distances(metric=args.metric, aggregate=aggregate_mode)
+
+    # Print individual comparison summary
+    mode_desc = "centroid" if result.aggregate == "mean" else "distribution"
+    print(f"\nIndividual Comparison Summary ({args.metric}, {mode_desc} comparison):")
+    print(f"  Mean distance: {result.mean_distance:.4f}")
+    print(f"  Median distance: {result.median_distance:.4f}")
+    print(f"  Range: {result.min_distance:.4f} - {result.max_distance:.4f}")
+    print(f"  Most similar: {result.most_similar_pair[0]} <-> {result.most_similar_pair[1]} ({result.most_similar_pair[2]:.4f})")
+    print(f"  Most different: {result.most_different_pair[0]} <-> {result.most_different_pair[1]} ({result.most_different_pair[2]:.4f})")
+
+    # Save comparison results JSON
+    results_path = output_dir / "comparison_results.json"
+    with open(results_path, "w", encoding="utf-8") as f:
+        json.dump(result.to_dict(), f, indent=2)
+    print(f"\nSaved results to: {results_path}")
+
+    # Determine which visualizations to generate
+    viz_types = args.viz.lower().split(",")
+    if "all" in viz_types:
+        viz_types = ["faceted", "overlaid", "heatmap", "forest", "similarity-map"]
+
+    # Check if individual visualizations should be skipped
+    skip_individual = getattr(args, 'skip_individual_viz', False) and groups is not None
+
+    # Initialize visualizer
+    visualizer = ComparisonVisualizer(comparison)
+
+    # Pass groups to visualizer if defined
+    if groups:
+        visualizer.groups = groups
+
+    # Generate individual visualizations (unless skipped)
+    if not skip_individual:
+        if "faceted" in viz_types and len(dimension_names) == 3:
+            print("\nGenerating faceted ternary plot...")
+            faceted_path = output_dir / "faceted_ternary.png"
+            visualizer.generate_faceted_ternary(
+                output_path=faceted_path,
+                dimension_names=dimension_names,
+                participants=participants,
+                max_cols=args.max_cols,
+                show_centroid=args.show_centroids,
+                show_convex_hull=args.show_hull,
+                title="Multi-Participant Entity Comparison",
+            )
+            print(f"  Saved: {faceted_path}")
+
+        if "overlaid" in viz_types and len(dimension_names) == 3:
+            print("Generating overlaid ternary plot...")
+            overlaid_path = output_dir / "overlaid_ternary.png"
+            visualizer.generate_overlaid_ternary(
+                output_path=overlaid_path,
+                dimension_names=dimension_names,
+                participants=participants,
+                show_centroids=args.show_centroids,
+                title="Entity Score Comparison (All Participants)",
+            )
+            print(f"  Saved: {overlaid_path}")
+
+        if "heatmap" in viz_types:
+            print("Generating distance heatmap...")
+            heatmap_path = output_dir / "distance_heatmap.png"
+            heatmap_title = f"Participant Distance Matrix ({args.metric.capitalize()}"
+            if result.aggregate == "distribution":
+                heatmap_title += ", Distribution"
+            heatmap_title += ")"
+            visualizer.generate_distance_heatmap(
+                result,
+                output_path=heatmap_path,
+                title=heatmap_title,
+            )
+            print(f"  Saved: {heatmap_path}")
+
+        if "forest" in viz_types:
+            print("Generating forest plot...")
+            forest_path = output_dir / "forest_plot.png"
+            visualizer.generate_forest_plot(
+                result,
+                output_path=forest_path,
+                dimension_names=dimension_names,
+                participants=participants,
+                title=f"Dimension Scores by Participant (95% CI)",
+            )
+            print(f"  Saved: {forest_path}")
+
+        if "similarity-map" in viz_types:
+            sim_method = getattr(args, 'similarity_method', 'mds')
+            print(f"Generating similarity map ({sim_method.upper()})...")
+            similarity_path = output_dir / "similarity_map.png"
+            aggregate_mode = getattr(result, 'aggregate', 'mean')
+            mode_label = "centroid" if aggregate_mode == "mean" else "distribution"
+            visualizer.generate_similarity_map(
+                result,
+                output_path=similarity_path,
+                method=sim_method,
+                title=f"Participant Similarity ({args.metric.capitalize()}, {mode_label})",
+            )
+            print(f"  Saved: {similarity_path}")
+
+    # Generate group-specific visualizations
+    if groups:
+        # Group-colored similarity map
+        if "similarity-map" in viz_types:
+            sim_method = getattr(args, 'similarity_method', 'mds')
+            print(f"Generating group-colored similarity map ({sim_method.upper()})...")
+            group_sim_path = output_dir / "group_similarity_map.png"
+            aggregate_mode = getattr(result, 'aggregate', 'mean')
+            mode_label = "centroid" if aggregate_mode == "mean" else "distribution"
+            visualizer.generate_similarity_map(
+                result,
+                output_path=group_sim_path,
+                method=sim_method,
+                title=f"Group Similarity ({args.metric.capitalize()}, {mode_label})",
+                groups=groups,
+            )
+            print(f"  Saved: {group_sim_path}")
+
+        # Group-ordered heatmap
+        if "heatmap" in viz_types:
+            print("Generating group-ordered heatmap...")
+            group_heatmap_path = output_dir / "group_heatmap.png"
+            heatmap_title = f"Group Distance Matrix ({args.metric.capitalize()}"
+            if result.aggregate == "distribution":
+                heatmap_title += ", Distribution"
+            heatmap_title += ")"
+            visualizer.generate_distance_heatmap(
+                result,
+                output_path=group_heatmap_path,
+                title=heatmap_title,
+                groups=groups,
+            )
+            print(f"  Saved: {group_heatmap_path}")
+
+    print(f"\nComparison complete. Output directory: {output_dir}")
+    return 0
+
+
+# =============================================================================
+# ENTITY PREPARE-SCORING COMMAND
+# =============================================================================
+
+def add_entity_prepare_scoring_args(parser: argparse.ArgumentParser) -> None:
+    """Add entity prepare-scoring arguments.
+
+    This command generates a scoring input CSV with real context from windows files.
+    It extracts the actual text where each entity was mentioned, linking entities
+    back to their original source text rather than using placeholder context.
+    """
+    parser.add_argument(
+        "windows_csv",
+        help="Path to windows CSV file (from 'qa relationships detect' with --save-windows).",
+    )
+    parser.add_argument(
+        "--nodes-csv",
+        default=None,
+        help="Optional path to graph nodes CSV to filter entities (from 'qa relationships graph').",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Output path for scoring input CSV (default: <windows>_scoring_input.csv).",
+    )
+    parser.add_argument(
+        "--context-mode",
+        choices=["window", "sentence", "combined"],
+        default="window",
+        help="Context extraction mode: 'window' (full window text), 'sentence' (just the sentence), 'combined' (all windows) (default: window).",
+    )
+    parser.add_argument(
+        "--max-context-length",
+        type=int,
+        default=2000,
+        help="Maximum context length in characters (default: 2000).",
+    )
+    parser.add_argument(
+        "--min-frequency",
+        type=int,
+        default=1,
+        help="Minimum entity frequency to include (default: 1).",
+    )
+    parser.add_argument(
+        "--participants",
+        default=None,
+        help="Specific participants to include, comma-separated (default: all).",
+    )
+
+
+async def run_entity_prepare_scoring(args: argparse.Namespace) -> int:
+    """
+    Generate a scoring input CSV with real context from windows files.
+
+    This extracts entity-context pairs from the relationship detection windows,
+    ensuring that each entity has actual source text as context rather than
+    placeholder text. This is essential for accurate entity scoring.
+
+    Args:
+        args: Parsed arguments namespace with configuration
+
+    Returns:
+        Exit code (0 for success)
+    """
+    windows_path = Path(args.windows_csv)
+    if not windows_path.exists():
+        raise SystemExit(f"Windows CSV not found: {windows_path}")
+
+    # Determine output path
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        output_path = windows_path.parent / f"{windows_path.stem}_scoring_input.csv"
+
+    print(f"Loading windows from: {windows_path}")
+
+    # Parse participant filter
+    participant_filter = None
+    if args.participants:
+        participant_filter = set(p.strip() for p in args.participants.split(","))
+        print(f"Filtering to participants: {participant_filter}")
+
+    # Load windows and extract entity-context pairs
+    entity_contexts = _extract_entity_contexts_from_windows(
+        windows_path=windows_path,
+        context_mode=args.context_mode,
+        max_context_length=args.max_context_length,
+        participant_filter=participant_filter,
+    )
+
+    print(f"Extracted {len(entity_contexts)} entity-context pairs")
+
+    # Optionally filter by nodes file
+    if args.nodes_csv:
+        nodes_path = Path(args.nodes_csv)
+        if nodes_path.exists():
+            print(f"Filtering by nodes file: {nodes_path}")
+            entity_contexts = _filter_by_nodes(
+                entity_contexts=entity_contexts,
+                nodes_path=nodes_path,
+                min_frequency=args.min_frequency,
+            )
+            print(f"After filtering: {len(entity_contexts)} entity-context pairs")
+        else:
+            print(f"Warning: Nodes file not found: {nodes_path}")
+
+    if not entity_contexts:
+        print("No entity-context pairs to write.")
+        return 1
+
+    # Write output CSV
+    _write_scoring_input_csv(entity_contexts, output_path)
+
+    # Print summary
+    unique_entities = len(set(ec["entity"] for ec in entity_contexts))
+    unique_participants = len(set(ec["text_id"] for ec in entity_contexts))
+    print(f"\nScoring input prepared:")
+    print(f"  Total pairs: {len(entity_contexts)}")
+    print(f"  Unique entities: {unique_entities}")
+    print(f"  Unique participants: {unique_participants}")
+    print(f"  Output: {output_path}")
+
+    return 0
+
+
+def _extract_entity_contexts_from_windows(
+    windows_path: Path,
+    context_mode: str = "window",
+    max_context_length: int = 2000,
+    participant_filter: Optional[set] = None,
+) -> List[Dict[str, str]]:
+    """
+    Extract entity-context pairs from a windows CSV file.
+
+    Args:
+        windows_path: Path to windows CSV (with text_id, window_index, window_text, entities_json)
+        context_mode: How to extract context ('window', 'sentence', 'combined')
+        max_context_length: Maximum length for context strings
+        participant_filter: Optional set of participant IDs to include
+
+    Returns:
+        List of dicts with 'entity', 'context', 'text_id' keys
+    """
+    # Track entity contexts: {(entity, text_id): [contexts]}
+    entity_context_map: Dict[tuple, List[str]] = {}
+
+    with open(windows_path, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+
+        if not reader.fieldnames:
+            return []
+
+        # Check required columns
+        required = ["text_id", "window_text", "entities_json"]
+        missing = [c for c in required if c not in reader.fieldnames]
+        if missing:
+            raise SystemExit(f"Windows CSV missing required columns: {missing}")
+
+        for row in reader:
+            text_id = row.get("text_id", "").strip()
+            window_text = row.get("window_text", "").strip()
+            entities_json = row.get("entities_json", "[]")
+
+            if not text_id or not window_text:
+                continue
+
+            # Apply participant filter
+            if participant_filter and text_id not in participant_filter:
+                continue
+
+            # Parse entities
+            try:
+                entities = json.loads(entities_json)
+            except json.JSONDecodeError:
+                entities = []
+
+            # Add context for each entity
+            for entity in entities:
+                entity = str(entity).strip()
+                if not entity:
+                    continue
+
+                key = (entity.lower(), text_id)  # Use lowercase for dedup
+
+                if key not in entity_context_map:
+                    entity_context_map[key] = []
+
+                entity_context_map[key].append(window_text)
+
+    # Convert to output format based on context_mode
+    results = []
+
+    for (entity_lower, text_id), contexts in entity_context_map.items():
+        # Use original case from first occurrence
+        entity = entity_lower  # Could be improved to preserve original case
+
+        if context_mode == "window":
+            # Use first window where entity appeared
+            context = contexts[0]
+        elif context_mode == "sentence":
+            # Extract sentence containing the entity from first window
+            context = _extract_sentence_with_entity(contexts[0], entity)
+        elif context_mode == "combined":
+            # Combine all unique contexts
+            unique_contexts = list(dict.fromkeys(contexts))  # Preserve order, remove dups
+            context = " [...] ".join(unique_contexts)
+        else:
+            context = contexts[0]
+
+        # Truncate if needed
+        if len(context) > max_context_length:
+            context = context[:max_context_length - 3] + "..."
+
+        results.append({
+            "entity": entity,
+            "context": context,
+            "text_id": text_id,
+        })
+
+    return results
+
+
+def _extract_sentence_with_entity(text: str, entity: str) -> str:
+    """Extract the sentence containing an entity from text."""
+    import re
+
+    # Simple sentence splitting
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+
+    entity_lower = entity.lower()
+    for sentence in sentences:
+        if entity_lower in sentence.lower():
+            return sentence.strip()
+
+    # If not found in any sentence, return full text
+    return text
+
+
+def _filter_by_nodes(
+    entity_contexts: List[Dict[str, str]],
+    nodes_path: Path,
+    min_frequency: int = 1,
+) -> List[Dict[str, str]]:
+    """
+    Filter entity-context pairs by a graph nodes file.
+
+    Args:
+        entity_contexts: List of entity-context dicts
+        nodes_path: Path to graph nodes CSV (with id, frequency, source_text_ids)
+        min_frequency: Minimum frequency to include
+
+    Returns:
+        Filtered list of entity-context dicts
+    """
+    # Load valid entities from nodes file
+    valid_entities = set()
+    entity_participants = {}  # entity -> set of valid participant IDs
+
+    with open(nodes_path, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+
+        for row in reader:
+            entity_id = row.get("id", "").strip().lower()
+            frequency = int(row.get("frequency", 1))
+            source_text_ids = row.get("source_text_ids", "[]")
+
+            if frequency >= min_frequency:
+                valid_entities.add(entity_id)
+
+                try:
+                    participants = json.loads(source_text_ids)
+                    entity_participants[entity_id] = set(participants)
+                except json.JSONDecodeError:
+                    entity_participants[entity_id] = set()
+
+    # Filter entity contexts
+    filtered = []
+    for ec in entity_contexts:
+        entity_lower = ec["entity"].lower()
+        text_id = ec["text_id"]
+
+        if entity_lower in valid_entities:
+            # Check if this participant mentioned this entity
+            valid_pids = entity_participants.get(entity_lower, set())
+            if not valid_pids or text_id in valid_pids:
+                filtered.append(ec)
+
+    return filtered
+
+
+def _write_scoring_input_csv(
+    entity_contexts: List[Dict[str, str]],
+    output_path: Path,
+) -> None:
+    """Write entity-context pairs to a scoring input CSV."""
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["entity", "context", "text_id"])
+        writer.writeheader()
+        writer.writerows(entity_contexts)

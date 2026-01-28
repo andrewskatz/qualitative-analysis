@@ -223,6 +223,7 @@ class EntityVisualizer:
         # Save or return
         if output_path:
             output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(
                 output_path,
                 dpi=150,
@@ -333,6 +334,7 @@ class EntityVisualizer:
         # Save or return
         if output_path:
             output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(
                 output_path,
                 dpi=150,
