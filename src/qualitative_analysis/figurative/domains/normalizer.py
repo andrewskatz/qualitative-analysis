@@ -8,6 +8,7 @@ semantically similar domain labels.
 import json
 import logging
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -17,6 +18,7 @@ from .models import (
     DomainMappedInstance,
     DomainCluster,
     NormalizationResult,
+    NormalizeCheckpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,8 @@ class DomainNormalizer:
         llm_model: Optional[str] = None,
         llm_provider: Optional[str] = None,
         llm_config: Optional[Dict[str, Any]] = None,
+        checkpoint_path: Optional[Path] = None,
+        checkpoint_interval: int = 10,
     ) -> NormalizationResult:
         """
         Normalize domains by clustering semantically similar labels.
@@ -104,6 +108,8 @@ class DomainNormalizer:
             llm_model: LLM model for canonical_method="llm"
             llm_provider: LLM provider for canonical_method="llm"
             llm_config: Additional LLM config for canonical_method="llm"
+            checkpoint_path: Optional path to save checkpoints for LLM method
+            checkpoint_interval: How often to save checkpoints (every N clusters)
             
         Returns:
             NormalizationResult with mappings and clusters
@@ -159,14 +165,15 @@ class DomainNormalizer:
             if not llm_model:
                 raise ValueError("llm_model required when canonical_method='llm'")
             import asyncio
-            source_clusters = asyncio.get_event_loop().run_until_complete(
-                self._generate_canonical_labels_llm(
-                    source_clusters, llm_model, llm_provider or "ollama", llm_config or {}
-                )
-            )
-            target_clusters = asyncio.get_event_loop().run_until_complete(
-                self._generate_canonical_labels_llm(
-                    target_clusters, llm_model, llm_provider or "ollama", llm_config or {}
+            source_clusters, target_clusters = asyncio.get_event_loop().run_until_complete(
+                self._generate_canonical_labels_llm_with_checkpoint(
+                    source_clusters,
+                    target_clusters,
+                    llm_model,
+                    llm_provider or "ollama",
+                    llm_config or {},
+                    checkpoint_path,
+                    checkpoint_interval,
                 )
             )
         else:
@@ -399,6 +406,194 @@ Respond with ONLY the JSON object, nothing else."""
                 cluster.canonical = cluster.members[0].upper()
         
         return clusters
+    
+    async def _generate_canonical_labels_llm_with_checkpoint(
+        self,
+        source_clusters: List[DomainCluster],
+        target_clusters: List[DomainCluster],
+        model: str,
+        provider: str,
+        config: Dict[str, Any],
+        checkpoint_path: Optional[Path],
+        checkpoint_interval: int,
+    ) -> tuple:
+        """
+        Generate canonical labels using an LLM with checkpoint support.
+        
+        Processes source clusters first, then target clusters, saving checkpoints
+        periodically to allow resumption if interrupted.
+        """
+        from ...core.providers import OllamaProvider
+        
+        llm = OllamaProvider(model, **config)
+        
+        # Load checkpoint if exists
+        checkpoint = None
+        processed_source = set()
+        processed_target = set()
+        
+        if checkpoint_path and checkpoint_path.exists():
+            checkpoint = self._load_normalize_checkpoint(checkpoint_path)
+            if checkpoint:
+                processed_source = set(checkpoint.processed_source_indices)
+                processed_target = set(checkpoint.processed_target_indices)
+                
+                # Restore canonical labels from checkpoint
+                for i, cluster_data in enumerate(checkpoint.source_clusters):
+                    if i < len(source_clusters):
+                        source_clusters[i].canonical = cluster_data.get("canonical", "")
+                for i, cluster_data in enumerate(checkpoint.target_clusters):
+                    if i < len(target_clusters):
+                        target_clusters[i].canonical = cluster_data.get("canonical", "")
+                
+                logger.info(
+                    f"Resuming from checkpoint: {len(processed_source)}/{len(source_clusters)} source, "
+                    f"{len(processed_target)}/{len(target_clusters)} target clusters processed"
+                )
+        
+        # Process source clusters
+        total_source = len(source_clusters)
+        for i, cluster in enumerate(source_clusters):
+            if i in processed_source:
+                continue
+            
+            await self._process_single_cluster_llm(cluster, llm)
+            processed_source.add(i)
+            
+            # Save checkpoint periodically
+            if checkpoint_path and (len(processed_source) % checkpoint_interval == 0):
+                self._save_normalize_checkpoint(
+                    checkpoint_path,
+                    "source",
+                    source_clusters,
+                    target_clusters,
+                    list(processed_source),
+                    list(processed_target),
+                    total_source,
+                    len(target_clusters),
+                )
+                logger.info(f"Checkpoint saved: {len(processed_source)}/{total_source} source clusters")
+        
+        # Process target clusters
+        total_target = len(target_clusters)
+        for i, cluster in enumerate(target_clusters):
+            if i in processed_target:
+                continue
+            
+            await self._process_single_cluster_llm(cluster, llm)
+            processed_target.add(i)
+            
+            # Save checkpoint periodically
+            if checkpoint_path and (len(processed_target) % checkpoint_interval == 0):
+                self._save_normalize_checkpoint(
+                    checkpoint_path,
+                    "target",
+                    source_clusters,
+                    target_clusters,
+                    list(processed_source),
+                    list(processed_target),
+                    total_source,
+                    total_target,
+                )
+                logger.info(f"Checkpoint saved: {len(processed_target)}/{total_target} target clusters")
+        
+        # Delete checkpoint on successful completion
+        if checkpoint_path and checkpoint_path.exists():
+            checkpoint_path.unlink()
+            logger.info(f"Removed checkpoint file: {checkpoint_path}")
+        
+        return source_clusters, target_clusters
+    
+    async def _process_single_cluster_llm(self, cluster: DomainCluster, llm) -> None:
+        """Process a single cluster to generate its canonical label via LLM."""
+        if len(cluster.members) == 1:
+            cluster.canonical = cluster.members[0].upper()
+            return
+        
+        prompt_template = """Given these semantically similar domain labels:
+{members}
+
+Generate a single canonical label that best represents this group of concepts.
+
+Respond with a JSON object in this exact format:
+{{
+  "reasoning": "Explanation of why this label was chosen...",
+  "canonical_label": "LABEL"
+}}
+
+The canonical_label should be:
+- 1-3 words
+- More abstract/general than the specific members
+- Written in UPPERCASE
+
+Respond with ONLY the JSON object, nothing else."""
+        
+        members_str = "\n".join(f"- {m}" for m in cluster.members)
+        prompt = prompt_template.format(members=members_str)
+        
+        try:
+            response = await llm.generate(prompt=prompt, temperature=0.3)
+            
+            # Parse JSON response
+            cleaned = response.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+            
+            data = json.loads(cleaned)
+            cluster.canonical = data.get("canonical_label", "").strip().upper()
+            
+            if "reasoning" in data:
+                logger.debug(f"Canonical label reasoning for {cluster.canonical}: {data['reasoning']}")
+                
+        except Exception as e:
+            logger.warning(f"LLM canonical generation failed: {e}")
+            cluster.canonical = cluster.members[0].upper()
+    
+    def _save_normalize_checkpoint(
+        self,
+        path: Path,
+        phase: str,
+        source_clusters: List[DomainCluster],
+        target_clusters: List[DomainCluster],
+        processed_source_indices: List[int],
+        processed_target_indices: List[int],
+        total_source: int,
+        total_target: int,
+    ) -> None:
+        """Save normalization checkpoint to file."""
+        checkpoint = NormalizeCheckpoint(
+            phase=phase,
+            processed_source_indices=processed_source_indices,
+            processed_target_indices=processed_target_indices,
+            source_clusters=[
+                {"canonical": c.canonical, "members": c.members, "avg_similarity": c.avg_similarity}
+                for c in source_clusters
+            ],
+            target_clusters=[
+                {"canonical": c.canonical, "members": c.members, "avg_similarity": c.avg_similarity}
+                for c in target_clusters
+            ],
+            config={"embedding_model": self.embedding_model_name},
+            timestamp=datetime.now().isoformat(),
+            total_source_clusters=total_source,
+            total_target_clusters=total_target,
+        )
+        
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(checkpoint.to_dict(), f, indent=2)
+    
+    def _load_normalize_checkpoint(self, path: Path) -> Optional[NormalizeCheckpoint]:
+        """Load normalization checkpoint from file."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return NormalizeCheckpoint.from_dict(data)
+        except Exception as e:
+            logger.warning(f"Failed to load normalize checkpoint: {e}")
+            return None
     
     def save(self, result: NormalizationResult, path: Path) -> None:
         """Save normalization result to JSON file."""

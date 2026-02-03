@@ -15,6 +15,7 @@ from .models import (
     DomainGraphEdge,
     DomainGraphData,
     Checkpoint,
+    NormalizeCheckpoint,
 )
 from .extractor import DomainExtractor
 from .normalizer import DomainNormalizer
@@ -29,6 +30,7 @@ __all__ = [
     "DomainGraphEdge",
     "DomainGraphData",
     "Checkpoint",
+    "NormalizeCheckpoint",
     # Classes
     "DomainExtractor",
     "DomainNormalizer",

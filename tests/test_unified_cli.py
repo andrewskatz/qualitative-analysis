@@ -73,6 +73,13 @@ class TestQAHelpOutput(unittest.TestCase):
         self.assertIn("--log-llm", result.stdout)
         self.assertIn("--window-size", result.stdout)
 
+    def test_qa_figurative_detect_checkpoint_args(self):
+        """Test that qa figurative detect --help shows checkpoint arguments."""
+        result = self._run_qa("figurative", "detect", "--help")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--checkpoint", result.stdout)
+        self.assertIn("--checkpoint-interval", result.stdout)
+
     def test_qa_figurative_map_help(self):
         """Test that qa figurative map --help shows arguments."""
         result = self._run_qa("figurative", "map", "--help")

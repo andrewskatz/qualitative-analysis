@@ -13,10 +13,11 @@ import csv
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Set
 
 from qualitative_analysis.core.cli_utils import emit_deprecation_warning
 from qualitative_analysis.figurative.detector import FigurativeDetector
+from qualitative_analysis.figurative.models import DetectionCheckpoint
 
 OUTPUT_CHOICES = {
     "summary",
@@ -107,6 +108,17 @@ def add_figurative_detect_args(parser: argparse.ArgumentParser) -> None:
             "extended_metaphor, analogy, other. Default: all types."
         ),
     )
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Checkpoint file path for resumable processing.",
+    )
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=int,
+        default=10,
+        help="Save checkpoint every N texts (default: 10).",
+    )
 
 
 def _parse_args() -> argparse.Namespace:
@@ -136,6 +148,49 @@ def _writer(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, Any]:
     return writer, handle
 
 
+def _writer_append(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, Any]:
+    """Open a CSV file for appending (no header written)."""
+    handle = path.open("a", newline="", encoding="utf-8")
+    writer = csv.DictWriter(handle, fieldnames=fieldnames)
+    return writer, handle
+
+
+def _load_checkpoint(path: Path) -> Optional[DetectionCheckpoint]:
+    """Load checkpoint from file if it exists."""
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return DetectionCheckpoint.from_dict(data)
+    except Exception as e:
+        print(f"Warning: Failed to load checkpoint: {e}")
+        return None
+
+
+def _save_checkpoint(
+    path: Path,
+    processed_ids: Set[str],
+    config: dict,
+    input_file: str,
+    total_texts: int,
+) -> None:
+    """Save checkpoint to file."""
+    # Ensure parent directory exists
+    path.parent.mkdir(parents=True, exist_ok=True)
+    
+    checkpoint = DetectionCheckpoint(
+        processed_text_ids=list(processed_ids),
+        config=config,
+        timestamp=datetime.now().isoformat(),
+        input_file=input_file,
+        total_texts=total_texts,
+    )
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(checkpoint.to_dict(), f, indent=2)
+    print(f"\n[Checkpoint saved: {len(processed_ids)}/{total_texts} texts processed]")
+
+
 async def run_figurative_detect(args: argparse.Namespace) -> int:
     """
     Run figurative language detection with the given arguments.
@@ -159,18 +214,41 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
 
     output_dir = _resolve_output_dir(input_path, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-    start_time = datetime.now()
-    run_dir = output_dir / f"run_{timestamp}"
+    
+    # Checkpoint handling
+    checkpoint_path = Path(args.checkpoint) if args.checkpoint else None
+    checkpoint_interval = args.checkpoint_interval
+    checkpoint: Optional[DetectionCheckpoint] = None
+    processed_ids: Set[str] = set()
+    resuming = False
+    
+    if checkpoint_path:
+        checkpoint = _load_checkpoint(checkpoint_path)
+        if checkpoint:
+            processed_ids = set(checkpoint.processed_text_ids)
+            resuming = True
+            print(f"Resuming from checkpoint: {len(processed_ids)} texts already processed")
+    
+    # Determine run directory and timestamp
+    if resuming and checkpoint:
+        # Extract timestamp from checkpoint config if available
+        timestamp = checkpoint.config.get("timestamp", datetime.now().strftime("%Y%m%d-%H%M"))
+        run_dir = output_dir / f"run_{timestamp}"
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+        run_dir = output_dir / f"run_{timestamp}"
+    
     run_dir.mkdir(parents=True, exist_ok=True)
+    start_time = datetime.now()
     output_prefix = f"{input_path.stem}_figurative"
 
     # Stats accumulator
     stats = {
-        "texts_processed": 0,
+        "texts_processed": len(processed_ids) if resuming else 0,
         "windows_analyzed": 0,
         "instances_found": 0,
         "errors": 0,
+        "skipped_from_checkpoint": len(processed_ids) if resuming else 0,
     }
 
     window_size = args.window_size
@@ -213,54 +291,41 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
     windows_writer = None
     windows_handle = None
 
+    # Define fieldnames for each output type
+    summary_fieldnames = [
+        "text_id", "text", "contains_figurative", "confidence",
+        "instance_count", "window_count", "strategy", "error",
+    ]
+    instances_fieldnames = [
+        "text_id", "window_index", "window_text", "instance_text",
+        "type", "confidence", "explanation", "context_dependent",
+        "start_char", "end_char",
+    ]
+    windows_fieldnames = [
+        "text_id", "window_index", "window_text", "has_figurative",
+        "confidence", "instances_count", "summary",
+    ]
+
     if write_summary:
         summary_path = run_dir / f"{output_prefix}_summary_{timestamp}.csv"
-        summary_writer, summary_handle = _writer(
-            summary_path,
-            [
-                "text_id",
-                "text",
-                "contains_figurative",
-                "confidence",
-                "instance_count",
-                "window_count",
-                "strategy",
-                "error",
-            ],
-        )
+        if resuming and summary_path.exists():
+            summary_writer, summary_handle = _writer_append(summary_path, summary_fieldnames)
+        else:
+            summary_writer, summary_handle = _writer(summary_path, summary_fieldnames)
 
     if write_instances:
         instances_path = run_dir / f"{output_prefix}_instances_{timestamp}.csv"
-        instances_writer, instances_handle = _writer(
-            instances_path,
-            [
-                "text_id",
-                "window_index",
-                "window_text",
-                "instance_text",
-                "type",
-                "confidence",
-                "explanation",
-                "context_dependent",
-                "start_char",
-                "end_char",
-            ],
-        )
+        if resuming and instances_path.exists():
+            instances_writer, instances_handle = _writer_append(instances_path, instances_fieldnames)
+        else:
+            instances_writer, instances_handle = _writer(instances_path, instances_fieldnames)
 
     if write_windows:
         windows_path = run_dir / f"{output_prefix}_windows_{timestamp}.csv"
-        windows_writer, windows_handle = _writer(
-            windows_path,
-            [
-                "text_id",
-                "window_index",
-                "window_text",
-                "has_figurative",
-                "confidence",
-                "instances_count",
-                "summary",
-            ],
-        )
+        if resuming and windows_path.exists():
+            windows_writer, windows_handle = _writer_append(windows_path, windows_fieldnames)
+        else:
+            windows_writer, windows_handle = _writer(windows_path, windows_fieldnames)
 
 
     try:
@@ -288,6 +353,10 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
                 text_id = row.get(args.id_col) if args.id_col else str(index)
                 text = row.get(args.text_col) or ""
 
+                # Skip already-processed texts (from checkpoint)
+                if text_id in processed_ids:
+                    continue
+
                 # Progress display: Text N of M
                 print(f"\r[Text {index}/{total_rows}] Processing '{text_id[:30]}...'", end="", flush=True)
 
@@ -299,8 +368,10 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
                     error = str(exc)
                     stats["errors"] += 1
 
-                # Update stats
+                # Update stats and track processed
                 stats["texts_processed"] += 1
+                processed_ids.add(text_id)
+                
                 if result:
                     window_count = result.metadata.get("window_count", 1)
                     instance_count = len(result.instances)
@@ -365,6 +436,20 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
                             }
                         )
 
+                # Save checkpoint periodically
+                if checkpoint_path and stats["texts_processed"] % checkpoint_interval == 0:
+                    # Flush CSV files before checkpoint
+                    for handle in [summary_handle, instances_handle, windows_handle]:
+                        if handle:
+                            handle.flush()
+                    _save_checkpoint(
+                        checkpoint_path,
+                        processed_ids,
+                        {"timestamp": timestamp},
+                        str(input_path),
+                        total_rows,
+                    )
+
     finally:
         for handle in [summary_handle, instances_handle, windows_handle]:
             if handle:
@@ -415,6 +500,11 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
     print(f"Wrote run metadata: {metadata_path}")
+
+    # Delete checkpoint file on successful completion
+    if checkpoint_path and checkpoint_path.exists():
+        checkpoint_path.unlink()
+        print(f"Removed checkpoint file: {checkpoint_path}")
 
     return 0
 

@@ -275,3 +275,59 @@ class Checkpoint:
             input_file=data.get("input_file", ""),
             total_items=data.get("total_items", 0),
         )
+
+
+@dataclass
+class NormalizeCheckpoint:
+    """
+    Checkpoint for resuming interrupted normalization (LLM canonical label generation).
+    
+    Attributes:
+        phase: Current phase ("source" or "target")
+        processed_source_indices: Indices of processed source clusters
+        processed_target_indices: Indices of processed target clusters
+        source_clusters: Source clusters with canonical labels (partial)
+        target_clusters: Target clusters with canonical labels (partial)
+        config: Normalization configuration
+        timestamp: When checkpoint was created
+        total_source_clusters: Total source clusters to process
+        total_target_clusters: Total target clusters to process
+    """
+    phase: str  # "source" or "target"
+    processed_source_indices: List[int]
+    processed_target_indices: List[int]
+    source_clusters: List[Dict[str, Any]]
+    target_clusters: List[Dict[str, Any]]
+    config: Dict[str, Any]
+    timestamp: str
+    total_source_clusters: int = 0
+    total_target_clusters: int = 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary for JSON storage."""
+        return {
+            "phase": self.phase,
+            "processed_source_indices": self.processed_source_indices,
+            "processed_target_indices": self.processed_target_indices,
+            "source_clusters": self.source_clusters,
+            "target_clusters": self.target_clusters,
+            "config": self.config,
+            "timestamp": self.timestamp,
+            "total_source_clusters": self.total_source_clusters,
+            "total_target_clusters": self.total_target_clusters,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "NormalizeCheckpoint":
+        """Deserialize from dictionary."""
+        return cls(
+            phase=data.get("phase", "source"),
+            processed_source_indices=data.get("processed_source_indices", []),
+            processed_target_indices=data.get("processed_target_indices", []),
+            source_clusters=data.get("source_clusters", []),
+            target_clusters=data.get("target_clusters", []),
+            config=data.get("config", {}),
+            timestamp=data.get("timestamp", ""),
+            total_source_clusters=data.get("total_source_clusters", 0),
+            total_target_clusters=data.get("total_target_clusters", 0),
+        )

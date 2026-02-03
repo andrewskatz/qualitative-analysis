@@ -230,6 +230,10 @@ def _add_entity_commands(
         run_entity_viz,
         add_entity_compare_args,
         run_entity_compare,
+        add_entity_compare_viz_args,
+        run_entity_compare_viz,
+        add_entity_report_args,
+        run_entity_report,
         add_entity_prepare_scoring_args,
         run_entity_prepare_scoring,
     )
@@ -283,6 +287,24 @@ def _add_entity_commands(
     )
     add_entity_compare_args(compare_parser)
     compare_parser.set_defaults(func=lambda args: asyncio.run(run_entity_compare(args)))
+
+    # compare-viz subcommand
+    compare_viz_parser = entity_subs.add_parser(
+        "compare-viz",
+        help="Generate comparison visualizations without re-running analysis",
+        description="Standalone visualization generation from scored entity data.",
+    )
+    add_entity_compare_viz_args(compare_viz_parser)
+    compare_viz_parser.set_defaults(func=lambda args: asyncio.run(run_entity_compare_viz(args)))
+
+    # report subcommand
+    report_parser = entity_subs.add_parser(
+        "report",
+        help="Generate markdown summary report of comparison findings",
+        description="Auto-generate a markdown report summarizing comparison results, group contrasts, and ICC decomposition.",
+    )
+    add_entity_report_args(report_parser)
+    report_parser.set_defaults(func=lambda args: asyncio.run(run_entity_report(args)))
 
     # prepare-scoring subcommand
     prep_score_parser = entity_subs.add_parser(

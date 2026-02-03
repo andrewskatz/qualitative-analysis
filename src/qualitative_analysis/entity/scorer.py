@@ -525,10 +525,18 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
         # Reconstruct the result
         scores = []
         for s_data in data.get("scores", []):
+            num_runs = s_data.get("num_runs", 1)
             dim_scores = {}
             for dim_name in data.get("dimensions", []):
                 dim_key = dim_name.get("name", "").lower() if isinstance(dim_name, dict) else dim_name.lower()
                 if f"{dim_key}_mean" in s_data:
+                    # Reconstruct individual run scores from {dim}_run{k} columns
+                    run_scores = []
+                    for k in range(1, num_runs + 1):
+                        run_key = f"{dim_key}_run{k}"
+                        if run_key in s_data:
+                            run_scores.append(s_data[run_key])
+
                     dim_scores[dim_key] = DimensionScore(
                         dimension=dim_key,
                         mean=s_data.get(f"{dim_key}_mean", 0),
@@ -540,7 +548,7 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
                             s_data.get(f"{dim_key}_ci_high", 0),
                         ),
                         coefficient_of_variation=s_data.get(f"{dim_key}_cv", 0),
-                        scores=[],
+                        scores=run_scores,
                         justification=s_data.get(f"{dim_key}_justification", ""),
                     )
 
@@ -549,7 +557,7 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
                 text_id=s_data.get("text_id", ""),
                 context=s_data.get("context", ""),
                 dimension_scores=dim_scores,
-                num_runs=s_data.get("num_runs", 1),
+                num_runs=num_runs,
                 processing_time_ms=s_data.get("processing_time_ms", 0),
             ))
 

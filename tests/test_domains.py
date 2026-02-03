@@ -14,6 +14,7 @@ from qualitative_analysis.figurative.domains import (
     DomainGraphEdge,
     DomainGraphData,
     Checkpoint,
+    NormalizeCheckpoint,
     DomainExtractor,
     DomainGraph,
 )
@@ -92,6 +93,33 @@ class TestDomainModels(unittest.TestCase):
         
         self.assertEqual(restored.processed_indices, [0, 1, 2])
         self.assertEqual(len(restored.partial_results), 1)
+    
+    def test_normalize_checkpoint_serialization(self):
+        """Test NormalizeCheckpoint to_dict and from_dict."""
+        checkpoint = NormalizeCheckpoint(
+            phase="source",
+            processed_source_indices=[0, 1, 2],
+            processed_target_indices=[],
+            source_clusters=[
+                {"canonical": "JOURNEY", "members": ["journey", "path"], "avg_similarity": 0.85}
+            ],
+            target_clusters=[],
+            config={"embedding_model": "test-model"},
+            timestamp="2026-02-03T09:00:00",
+            total_source_clusters=5,
+            total_target_clusters=3,
+        )
+        
+        data = checkpoint.to_dict()
+        self.assertEqual(data["phase"], "source")
+        self.assertEqual(data["processed_source_indices"], [0, 1, 2])
+        self.assertEqual(len(data["source_clusters"]), 1)
+        
+        restored = NormalizeCheckpoint.from_dict(data)
+        self.assertEqual(restored.phase, "source")
+        self.assertEqual(restored.processed_source_indices, [0, 1, 2])
+        self.assertEqual(restored.total_source_clusters, 5)
+        self.assertEqual(restored.source_clusters[0]["canonical"], "JOURNEY")
 
 
 class TestDomainExtractorParsing(unittest.TestCase):

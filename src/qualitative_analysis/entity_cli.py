@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 from qualitative_analysis.core.cli_utils import PACKAGE_VERSION
 
 logger = logging.getLogger(__name__)
@@ -775,6 +777,11 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
         help="Show convex hull on faceted plots.",
     )
     parser.add_argument(
+        "--show-ellipses",
+        action="store_true",
+        help="Show 95%% confidence ellipses per participant on overlaid ternary.",
+    )
+    parser.add_argument(
         "--max-cols",
         type=int,
         default=4,
@@ -815,6 +822,75 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
         "--skip-individual-viz",
         action="store_true",
         help="When using groups, skip individual participant visualizations (only generate group visualizations).",
+    )
+    parser.add_argument(
+        "--statistical-test",
+        choices=["permutation", "none"],
+        default="none",
+        help=(
+            "Statistical test for group comparison significance. "
+            "'permutation': Run permutation test to compute p-value for effect size. "
+            "'none': Skip statistical testing (default)."
+        ),
+    )
+    parser.add_argument(
+        "--n-permutations",
+        type=int,
+        default=1000,
+        help="Number of permutations for permutation test (default: 1000).",
+    )
+
+    # Bayesian modeling arguments
+    parser.add_argument(
+        "--method",
+        choices=["distance", "bayesian", "all"],
+        default="distance",
+        help=(
+            "Analysis method: 'distance' (default, distance-based metrics), "
+            "'bayesian' (hierarchical Bayesian model), or 'all' (both). "
+            "Bayesian requires groups and run-level score data."
+        ),
+    )
+    parser.add_argument(
+        "--chains",
+        type=int,
+        default=4,
+        help="Number of MCMC chains for Bayesian model (default: 4).",
+    )
+    parser.add_argument(
+        "--draws",
+        type=int,
+        default=2000,
+        help="Number of posterior draws per chain (default: 2000).",
+    )
+    parser.add_argument(
+        "--tune",
+        type=int,
+        default=1000,
+        help="Number of tuning steps per chain (default: 1000).",
+    )
+    parser.add_argument(
+        "--target-accept",
+        type=float,
+        default=0.95,
+        help="Target acceptance rate for NUTS sampler (default: 0.95).",
+    )
+    parser.add_argument(
+        "--rope-delta",
+        type=float,
+        default=5.0,
+        help="ROPE half-width on 0-100 scale for practical significance (default: 5.0).",
+    )
+    parser.add_argument(
+        "--sampler",
+        choices=["nutpie", "nuts"],
+        default="nutpie",
+        help="MCMC sampler backend: 'nutpie' (faster, default) or 'nuts' (standard PyMC).",
+    )
+    parser.add_argument(
+        "--save-trace",
+        action="store_true",
+        help="Save full InferenceData as netCDF files (can be large).",
     )
 
 
@@ -1090,6 +1166,49 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
             json.dump(group_result.to_dict(), f, indent=2)
         print(f"\nSaved group results to: {group_results_path}")
 
+        # Run statistical test if requested
+        statistical_test = getattr(args, 'statistical_test', 'none')
+        if statistical_test == "permutation":
+            n_perms = getattr(args, 'n_permutations', 1000)
+            print(f"\nRunning permutation test ({n_perms} permutations)...")
+            perm_result = comparison.run_permutation_test(
+                metric=args.metric,
+                aggregate=aggregate_mode,
+                n_permutations=n_perms,
+            )
+            print(f"  Observed effect size: {perm_result['observed_effect_size']:.3f}")
+            print(f"  P-value: {perm_result['p_value']:.4f}")
+            if perm_result['p_value'] < 0.05:
+                print("  Result: Significant group differences (p < 0.05)")
+            else:
+                print("  Result: No significant group differences (p >= 0.05)")
+
+            # Update group_result with permutation test p-value
+            group_result.permutation_test_p = perm_result['p_value']
+
+            # Re-save group results with p-value
+            with open(group_results_path, "w", encoding="utf-8") as f:
+                json.dump(group_result.to_dict(), f, indent=2)
+
+            # Save full permutation test results
+            perm_results_path = output_dir / "permutation_test_results.json"
+            with open(perm_results_path, "w", encoding="utf-8") as f:
+                # Don't save full null distribution to keep file size reasonable
+                perm_summary = {
+                    "observed_effect_size": perm_result['observed_effect_size'],
+                    "p_value": perm_result['p_value'],
+                    "n_permutations": perm_result['n_permutations'],
+                    "null_distribution_summary": {
+                        "mean": float(np.mean(perm_result['null_distribution'])),
+                        "std": float(np.std(perm_result['null_distribution'])),
+                        "min": float(np.min(perm_result['null_distribution'])),
+                        "max": float(np.max(perm_result['null_distribution'])),
+                        "percentile_95": float(np.percentile(perm_result['null_distribution'], 95)),
+                    }
+                }
+                json.dump(perm_summary, f, indent=2)
+            print(f"  Saved permutation test results to: {perm_results_path}")
+
     # Compute individual pairwise distances (always, for visualizations)
     print(f"\nComputing pairwise distances using {args.metric} metric (aggregate={aggregate_mode})...")
     result = comparison.compute_distances(metric=args.metric, aggregate=aggregate_mode)
@@ -1148,6 +1267,7 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                 dimension_names=dimension_names,
                 participants=participants,
                 show_centroids=args.show_centroids,
+                show_confidence_ellipses=getattr(args, 'show_ellipses', False),
                 title="Entity Score Comparison (All Participants)",
             )
             print(f"  Saved: {overlaid_path}")
@@ -1225,6 +1345,145 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                 groups=groups,
             )
             print(f"  Saved: {group_heatmap_path}")
+
+    # =========================================================================
+    # BAYESIAN HIERARCHICAL MODEL
+    # =========================================================================
+    method = getattr(args, 'method', 'distance')
+    if method in ("bayesian", "all"):
+        if not groups:
+            print("\nWarning: --method bayesian requires groups. Skipping Bayesian analysis.")
+        else:
+            # Check PyMC availability
+            try:
+                from qualitative_analysis.entity.bayesian import (
+                    BayesianEntityModel,
+                    BayesianVisualizer,
+                )
+            except ImportError:
+                print(
+                    "\nError: Bayesian modeling requires PyMC and ArviZ. Install with:\n"
+                    '  pip install -e ".[bayes]"\n'
+                    "Or:\n"
+                    "  pip install 'pymc>=5.21' arviz nutpie"
+                )
+                if method == "bayesian":
+                    return 1
+                else:
+                    print("Skipping Bayesian analysis (--method all).")
+                    print(f"\nComparison complete. Output directory: {output_dir}")
+                    return 0
+
+            import pandas as pd
+
+            print("\n" + "=" * 60)
+            print("BAYESIAN HIERARCHICAL MODEL")
+            print("=" * 60)
+
+            bayesian_dir = output_dir / "bayesian"
+            bayesian_dir.mkdir(parents=True, exist_ok=True)
+
+            # Load the scored CSV as a DataFrame for Bayesian modeling
+            scores_df = pd.read_csv(input_path)
+
+            # Ensure group column exists
+            group_col = getattr(args, 'group_by_col', None)
+            if group_col and group_col in scores_df.columns:
+                pass  # group column already in data
+            else:
+                # Add group column from groups dict
+                pid_to_group = {}
+                for gname, members in groups.items():
+                    for pid in members:
+                        pid_to_group[pid] = gname
+                scores_df["group"] = scores_df[args.participant_col].map(pid_to_group)
+                # Drop rows with no group assignment
+                before = len(scores_df)
+                scores_df = scores_df.dropna(subset=["group"])
+                if len(scores_df) < before:
+                    print(f"  Dropped {before - len(scores_df)} rows with no group assignment")
+                group_col = "group"
+
+            try:
+                bayesian_model = BayesianEntityModel(
+                    scores_df=scores_df,
+                    dimensions=dimension_names,
+                    groups=groups,
+                    participant_col=args.participant_col,
+                    entity_col=args.entity_col,
+                    group_col=group_col,
+                )
+
+                # Fit all dimensions
+                sampler = getattr(args, 'sampler', 'nutpie')
+                bayesian_model.fit_all_dimensions(
+                    chains=args.chains,
+                    draws=args.draws,
+                    tune=args.tune,
+                    target_accept=args.target_accept,
+                    sampler=sampler,
+                )
+
+                # Print convergence summary
+                print("\nConvergence Summary:")
+                all_converged = True
+                for dim, res in bayesian_model.results.items():
+                    d = res.diagnostics
+                    status = "PASS" if res.converged else "FAIL"
+                    if not res.converged:
+                        all_converged = False
+                    print(
+                        f"  {dim}: {status} "
+                        f"(R-hat={d['rhat_max']}, "
+                        f"ESS_bulk={d['ess_bulk_min']:.0f}, "
+                        f"ESS_tail={d['ess_tail_min']:.0f}, "
+                        f"div={d['divergences']})"
+                    )
+
+                if not all_converged:
+                    print(
+                        "\nWarning: Some dimensions did not fully converge. "
+                        "Consider increasing --tune or --target-accept."
+                    )
+
+                # Print group contrast highlights
+                rope_delta = getattr(args, 'rope_delta', 5.0)
+                contrasts = bayesian_model.compute_group_contrasts(rope_delta=rope_delta)
+                print("\nGroup Contrasts (population-level mean difference, 0-100 scale):")
+                for dim, dim_contrasts in contrasts.items():
+                    print(f"\n  {dim.upper()}:")
+                    for pair_key, c in dim_contrasts.items():
+                        direction = ">" if c["p_a_gt_b"] > 0.5 else "<"
+                        p_dir = max(c["p_a_gt_b"], c["p_b_gt_a"])
+                        print(
+                            f"    {c['group_a']} vs {c['group_b']}: "
+                            f"Δ = {c['mean_diff']:+.2f} "
+                            f"[{c['hdi_3%']:+.2f}, {c['hdi_97%']:+.2f}], "
+                            f"P({c['group_a']}{direction}{c['group_b']}) = {p_dir:.3f}"
+                        )
+
+                # Save all results
+                save_trace = getattr(args, 'save_trace', False)
+                bayesian_model.save_results(
+                    bayesian_dir, rope_delta=rope_delta, save_trace=save_trace
+                )
+
+                # Generate visualizations
+                print("\nGenerating Bayesian visualizations...")
+                viz = BayesianVisualizer(bayesian_model)
+                viz.generate_all(bayesian_dir, rope_delta=rope_delta)
+
+                print(f"\nBayesian results saved to: {bayesian_dir}")
+
+            except ValueError as e:
+                print(f"\nBayesian model error: {e}")
+                if method == "bayesian":
+                    return 1
+            except Exception as e:
+                logger.exception("Bayesian model failed")
+                print(f"\nBayesian model failed: {e}")
+                if method == "bayesian":
+                    return 1
 
     print(f"\nComparison complete. Output directory: {output_dir}")
     return 0
@@ -1529,3 +1788,486 @@ def _write_scoring_input_csv(
         writer = csv.DictWriter(f, fieldnames=["entity", "context", "text_id"])
         writer.writeheader()
         writer.writerows(entity_contexts)
+
+
+# =============================================================================
+# ENTITY COMPARE-VIZ COMMAND
+# =============================================================================
+
+def add_entity_compare_viz_args(parser: argparse.ArgumentParser) -> None:
+    """Add entity comparison visualization arguments."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to input CSV with scored entities.",
+    )
+    parser.add_argument(
+        "--participant-col",
+        default="text_id",
+        help="Column name for participant IDs (default: text_id).",
+    )
+    parser.add_argument(
+        "--entity-col",
+        default="entity",
+        help="Column name for entities (default: entity).",
+    )
+    parser.add_argument(
+        "--dimensions",
+        default="social,ecological,technological",
+        help="Dimensions to visualize, comma-separated (default: social,ecological,technological).",
+    )
+    parser.add_argument(
+        "--viz",
+        default="all",
+        help=(
+            "Visualizations to generate: 'all', 'faceted', 'overlaid', 'heatmap', "
+            "'forest', 'similarity-map', or comma-separated list (default: all)."
+        ),
+    )
+    parser.add_argument(
+        "--metric",
+        choices=["aitchison", "emd", "cosine", "euclidean"],
+        default="aitchison",
+        help="Distance metric for heatmap/similarity-map (default: aitchison).",
+    )
+    parser.add_argument(
+        "--aggregate",
+        choices=["mean", "distribution"],
+        default="mean",
+        help="Aggregation mode (default: mean).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory (default: creates viz_* subdirectory).",
+    )
+    parser.add_argument(
+        "--participants",
+        default=None,
+        help="Specific participants to include, comma-separated (default: all).",
+    )
+    parser.add_argument(
+        "--groups",
+        default=None,
+        help="Define groups inline: 'group1:pid1,pid2;group2:pid3,pid4'.",
+    )
+    parser.add_argument(
+        "--groups-file",
+        default=None,
+        help="Path to JSON or CSV file defining groups.",
+    )
+    parser.add_argument(
+        "--group-by-col",
+        default=None,
+        help="Column name in input CSV to use for grouping.",
+    )
+    parser.add_argument(
+        "--show-centroids",
+        action="store_true",
+        default=True,
+        help="Show centroid markers on ternary plots.",
+    )
+    parser.add_argument(
+        "--show-hull",
+        action="store_true",
+        help="Show convex hull on faceted plots.",
+    )
+    parser.add_argument(
+        "--show-ellipses",
+        action="store_true",
+        help="Show 95%% confidence ellipses per participant on overlaid ternary.",
+    )
+    parser.add_argument(
+        "--max-cols",
+        type=int,
+        default=4,
+        help="Maximum columns in faceted grid (default: 4).",
+    )
+    parser.add_argument(
+        "--similarity-method",
+        choices=["mds", "umap"],
+        default="mds",
+        help="Method for similarity map (default: mds).",
+    )
+
+
+async def run_entity_compare_viz(args: argparse.Namespace) -> int:
+    """
+    Run standalone comparison visualizations without re-computing distances.
+
+    This generates visualizations from scored entity data. Useful for
+    regenerating plots with different parameters without re-running
+    the full comparison pipeline.
+
+    Args:
+        args: Parsed arguments namespace
+
+    Returns:
+        Exit code (0 for success)
+    """
+    from qualitative_analysis.entity.comparison import (
+        ParticipantComparison,
+        ComparisonVisualizer,
+    )
+
+    input_path = Path(args.input_csv)
+    if not input_path.exists():
+        raise SystemExit(f"Input CSV not found: {input_path}")
+
+    # Determine output directory
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        parent = input_path.parent
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+        output_dir = parent / f"viz_{timestamp}"
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Parse dimensions
+    dimension_names = [d.strip().lower() for d in args.dimensions.split(",")]
+    print(f"Visualizing dimensions: {dimension_names}")
+
+    # Load scores
+    print(f"Loading scored entities from: {input_path}")
+    comparison = ParticipantComparison()
+    comparison.load_scores(
+        input_path,
+        participant_col=args.participant_col,
+        entity_col=args.entity_col,
+        dimensions=dimension_names,
+    )
+
+    n_participants = len(comparison.scores_by_participant)
+    print(f"Loaded {n_participants} participants")
+
+    if n_participants < 2:
+        print("Need at least 2 participants for comparison visualizations.")
+        return 1
+
+    # Parse participants filter
+    participants = None
+    if args.participants:
+        participants = [p.strip() for p in args.participants.split(",")]
+        participants = [p for p in participants if p in comparison.scores_by_participant]
+
+    # Parse groups
+    groups = None
+    if args.groups:
+        groups = parse_inline_groups(args.groups)
+    elif args.groups_file:
+        groups = load_groups_file(Path(args.groups_file))
+    elif args.group_by_col:
+        groups = extract_groups_from_data(
+            input_path, args.group_by_col, args.participant_col
+        )
+
+    if groups:
+        comparison.set_groups(groups)
+
+    # Compute distances (needed for heatmap and similarity map)
+    aggregate_mode = getattr(args, "aggregate", "mean")
+    result = comparison.compute_distances(metric=args.metric, aggregate=aggregate_mode)
+
+    # Determine which visualizations to generate
+    viz_types = args.viz.lower().split(",")
+    if "all" in viz_types:
+        viz_types = ["faceted", "overlaid", "heatmap", "forest", "similarity-map"]
+
+    visualizer = ComparisonVisualizer(comparison)
+    if groups:
+        visualizer.groups = groups
+
+    generated = []
+
+    if "faceted" in viz_types and len(dimension_names) == 3:
+        print("Generating faceted ternary plot...")
+        path = output_dir / "faceted_ternary.png"
+        visualizer.generate_faceted_ternary(
+            output_path=path,
+            dimension_names=dimension_names,
+            participants=participants,
+            max_cols=args.max_cols,
+            show_centroid=args.show_centroids,
+            show_convex_hull=args.show_hull,
+        )
+        generated.append(path)
+
+    if "overlaid" in viz_types and len(dimension_names) == 3:
+        print("Generating overlaid ternary plot...")
+        path = output_dir / "overlaid_ternary.png"
+        visualizer.generate_overlaid_ternary(
+            output_path=path,
+            dimension_names=dimension_names,
+            participants=participants,
+            show_centroids=args.show_centroids,
+            show_confidence_ellipses=getattr(args, 'show_ellipses', False),
+        )
+        generated.append(path)
+
+    if "heatmap" in viz_types:
+        print("Generating distance heatmap...")
+        path = output_dir / "distance_heatmap.png"
+        visualizer.generate_distance_heatmap(
+            result,
+            output_path=path,
+            groups=groups,
+        )
+        generated.append(path)
+
+    if "forest" in viz_types:
+        print("Generating forest plot...")
+        path = output_dir / "forest_plot.png"
+        visualizer.generate_forest_plot(
+            result,
+            output_path=path,
+            dimension_names=dimension_names,
+            participants=participants,
+        )
+        generated.append(path)
+
+    if "similarity-map" in viz_types:
+        sim_method = getattr(args, "similarity_method", "mds")
+        print(f"Generating similarity map ({sim_method.upper()})...")
+        path = output_dir / "similarity_map.png"
+        visualizer.generate_similarity_map(
+            result,
+            output_path=path,
+            method=sim_method,
+            groups=groups,
+        )
+        generated.append(path)
+
+    for p in generated:
+        print(f"  Saved: {p}")
+
+    print(f"\nVisualization complete. Output directory: {output_dir}")
+    return 0
+
+
+# =============================================================================
+# ENTITY REPORT COMMAND
+# =============================================================================
+
+def add_entity_report_args(parser: argparse.ArgumentParser) -> None:
+    """Add entity report generation arguments."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to input CSV with scored entities.",
+    )
+    parser.add_argument(
+        "--participant-col",
+        default="text_id",
+        help="Column name for participant IDs (default: text_id).",
+    )
+    parser.add_argument(
+        "--entity-col",
+        default="entity",
+        help="Column name for entities (default: entity).",
+    )
+    parser.add_argument(
+        "--dimensions",
+        default="social,ecological,technological",
+        help="Dimensions to include, comma-separated (default: social,ecological,technological).",
+    )
+    parser.add_argument(
+        "--metric",
+        choices=["aitchison", "emd", "cosine", "euclidean"],
+        default="aitchison",
+        help="Distance metric (default: aitchison).",
+    )
+    parser.add_argument(
+        "--groups",
+        default=None,
+        help="Define groups inline: 'group1:pid1,pid2;group2:pid3,pid4'.",
+    )
+    parser.add_argument(
+        "--groups-file",
+        default=None,
+        help="Path to JSON or CSV file defining groups.",
+    )
+    parser.add_argument(
+        "--group-by-col",
+        default=None,
+        help="Column name in input CSV to use for grouping.",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Output path for markdown report (default: <input>_report.md).",
+    )
+    parser.add_argument(
+        "--bayesian-dir",
+        default=None,
+        help="Path to Bayesian results directory to include in report.",
+    )
+
+
+async def run_entity_report(args: argparse.Namespace) -> int:
+    """
+    Generate a markdown summary report of comparison findings.
+
+    Args:
+        args: Parsed arguments namespace
+
+    Returns:
+        Exit code (0 for success)
+    """
+    from qualitative_analysis.entity.comparison import (
+        ParticipantComparison,
+    )
+
+    input_path = Path(args.input_csv)
+    if not input_path.exists():
+        raise SystemExit(f"Input CSV not found: {input_path}")
+
+    dimension_names = [d.strip().lower() for d in args.dimensions.split(",")]
+
+    # Load scores
+    comparison = ParticipantComparison()
+    comparison.load_scores(
+        input_path,
+        participant_col=args.participant_col,
+        entity_col=args.entity_col,
+        dimensions=dimension_names,
+    )
+
+    n_participants = len(comparison.scores_by_participant)
+    pids = list(comparison.scores_by_participant.keys())
+
+    # Parse groups
+    groups = None
+    if args.groups:
+        groups = parse_inline_groups(args.groups)
+    elif args.groups_file:
+        groups = load_groups_file(Path(args.groups_file))
+    elif args.group_by_col:
+        groups = extract_groups_from_data(
+            input_path, args.group_by_col, args.participant_col
+        )
+
+    if groups:
+        comparison.set_groups(groups)
+
+    # Compute distances
+    result = comparison.compute_distances(metric=args.metric, aggregate="mean")
+
+    # Build report
+    lines = []
+    lines.append(f"# Entity Comparison Report")
+    lines.append("")
+    lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    lines.append(f"**Input:** `{input_path.name}`")
+    lines.append(f"**Dimensions:** {', '.join(d.capitalize() for d in dimension_names)}")
+    lines.append(f"**Participants:** {n_participants}")
+    lines.append(f"**Distance Metric:** {args.metric.capitalize()}")
+    lines.append("")
+
+    # --- Summary ---
+    lines.append("## Summary Statistics")
+    lines.append("")
+    lines.append(f"| Metric | Value |")
+    lines.append(f"|--------|-------|")
+    lines.append(f"| Mean distance | {result.mean_distance:.4f} |")
+    lines.append(f"| Median distance | {result.median_distance:.4f} |")
+    lines.append(f"| Min distance | {result.min_distance:.4f} |")
+    lines.append(f"| Max distance | {result.max_distance:.4f} |")
+    lines.append(f"| Most similar | {result.most_similar_pair[0]} <-> {result.most_similar_pair[1]} ({result.most_similar_pair[2]:.4f}) |")
+    lines.append(f"| Most different | {result.most_different_pair[0]} <-> {result.most_different_pair[1]} ({result.most_different_pair[2]:.4f}) |")
+    lines.append("")
+
+    # --- Per-participant dimension means ---
+    lines.append("## Participant Dimension Means")
+    lines.append("")
+
+    header = "| Participant | " + " | ".join(d.capitalize() for d in dimension_names) + " |"
+    sep = "|------------|" + "|".join("-" * (len(d) + 2) for d in dimension_names) + "|"
+    lines.append(header)
+    lines.append(sep)
+
+    for pid in sorted(pids):
+        scores = comparison.scores_by_participant[pid]
+        # Compute mean per dimension
+        dim_means = {}
+        for dim in dimension_names:
+            vals = [s[dimension_names.index(dim)] for s in scores]
+            dim_means[dim] = np.mean(vals)
+        row = f"| {pid} | " + " | ".join(f"{dim_means[d]:.1f}" for d in dimension_names) + " |"
+        lines.append(row)
+
+    lines.append("")
+
+    # --- Group comparison ---
+    if groups:
+        lines.append("## Group Comparison")
+        lines.append("")
+
+        group_result = comparison.compute_group_distances(
+            metric=args.metric, aggregate="mean"
+        )
+        lines.append(group_result.summary_str())
+        lines.append("")
+
+    # --- Bayesian results ---
+    bayesian_dir = getattr(args, "bayesian_dir", None)
+    if bayesian_dir:
+        bayesian_path = Path(bayesian_dir)
+        contrasts_file = bayesian_path / "group_contrasts.json"
+        icc_file = bayesian_path / "icc_decomposition.json"
+
+        if contrasts_file.exists():
+            lines.append("## Bayesian Group Contrasts")
+            lines.append("")
+
+            with open(contrasts_file) as f:
+                contrasts = json.load(f)
+
+            for dim, dim_contrasts in contrasts.items():
+                lines.append(f"### {dim.capitalize()}")
+                lines.append("")
+                lines.append("| Comparison | Mean Δ | 94% HDI | P(direction) |")
+                lines.append("|-----------|--------|---------|--------------|")
+
+                for pair_key, c in dim_contrasts.items():
+                    p_dir = max(c.get("p_a_gt_b", 0), c.get("p_b_gt_a", 0))
+                    lines.append(
+                        f"| {c['group_a']} vs {c['group_b']} "
+                        f"| {c['mean_diff']:+.2f} "
+                        f"| [{c['hdi_3%']:+.2f}, {c['hdi_97%']:+.2f}] "
+                        f"| {p_dir:.3f} |"
+                    )
+                lines.append("")
+
+        if icc_file.exists():
+            lines.append("## Variance Decomposition (ICC)")
+            lines.append("")
+            lines.append("| Dimension | Group | Entity | Participant | Run |")
+            lines.append("|-----------|-------|--------|-------------|-----|")
+
+            with open(icc_file) as f:
+                icc = json.load(f)
+
+            for dim, icc_data in icc.items():
+                lines.append(
+                    f"| {dim.capitalize()} "
+                    f"| {icc_data['icc_group']['mean']:.1%} "
+                    f"| {icc_data['icc_entity']['mean']:.1%} "
+                    f"| {icc_data['icc_participant']['mean']:.1%} "
+                    f"| {icc_data['icc_run']['mean']:.1%} |"
+                )
+            lines.append("")
+
+    lines.append("---")
+    lines.append(f"*Report generated by qualitative-analysis v{PACKAGE_VERSION}*")
+
+    # Write report
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        output_path = input_path.parent / f"{input_path.stem}_report.md"
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    print(f"Report saved to: {output_path}")
+    return 0

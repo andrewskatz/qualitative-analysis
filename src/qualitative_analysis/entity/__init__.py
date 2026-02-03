@@ -54,6 +54,18 @@ from qualitative_analysis.entity.comparison import (
     ilr_transform,
 )
 
+# Bayesian modeling (optional — requires pymc, arviz, nutpie)
+try:
+    from qualitative_analysis.entity.bayesian import (
+        BayesianEntityModel,
+        BayesianVisualizer,
+        BayesianModelResult,
+        check_pymc_available,
+        prepare_beta_data,
+    )
+except ImportError:
+    pass
+
 __all__ = [
     # Models - Dimensions
     "DimensionDefinition",

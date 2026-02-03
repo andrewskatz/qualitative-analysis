@@ -39,6 +39,11 @@ viz = [
     "adjustText>=1.0.0",
     "python-ternary>=1.0.8",  # Ternary plots for entity scoring visualization
 ]
+bayes = [
+    "pymc>=5.21",
+    "arviz>=0.20",
+    "nutpie>=0.13",
+]
 
 [project.scripts]
 qa = "qualitative_analysis.unified_cli:main"

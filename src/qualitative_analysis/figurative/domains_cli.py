@@ -171,6 +171,17 @@ def add_normalize_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Print LLM prompts and responses to the terminal",
     )
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Checkpoint file path for resumable LLM processing",
+    )
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=int,
+        default=10,
+        help="Save checkpoint every N clusters (default: 10)",
+    )
 
 
 def add_graph_args(parser: argparse.ArgumentParser) -> None:
@@ -560,6 +571,8 @@ def run_normalize(args) -> int:
             llm_model=args.model if args.canonical_method == "llm" else None,
             llm_provider="ollama" if args.canonical_method == "llm" else None,
             llm_config=llm_config,
+            checkpoint_path=Path(args.checkpoint) if args.checkpoint else None,
+            checkpoint_interval=args.checkpoint_interval,
         )
         
         print(f"Created {len(normalization.source_clusters)} source clusters, "

@@ -294,6 +294,9 @@ class EntityScore:
 
         # Flatten dimension scores for CSV compatibility
         for dim_name, score in self.dimension_scores.items():
+            # Individual run scores (e.g., social_run1, social_run2, social_run3)
+            for k, run_score in enumerate(score.scores, start=1):
+                result[f"{dim_name}_run{k}"] = run_score
             result[f"{dim_name}_mean"] = score.mean
             result[f"{dim_name}_median"] = score.median
             result[f"{dim_name}_std"] = score.std_dev

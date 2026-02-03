@@ -1034,6 +1034,164 @@ class ParticipantComparison:
         logger.info(f"Computed group distances for {len(self.groups)} groups")
         return result
 
+    def run_permutation_test(
+        self,
+        metric: str = "aitchison",
+        aggregate: str = "mean",
+        n_permutations: int = 1000,
+        random_seed: Optional[int] = 42,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Run permutation test for group comparison significance.
+
+        Tests the null hypothesis that group labels are exchangeable (i.e., no
+        true difference between groups). Shuffles group labels and recomputes
+        the effect size (between/within ratio) to build a null distribution.
+
+        Args:
+            metric: Distance metric ("aitchison", "emd", "cosine", "euclidean").
+            aggregate: Aggregation mode ("mean" or "distribution").
+            n_permutations: Number of permutations (default 1000).
+            random_seed: Random seed for reproducibility (default 42).
+            **kwargs: Additional arguments for distance function.
+
+        Returns:
+            Dictionary with:
+                - observed_effect_size: The actual effect size from the data
+                - p_value: Proportion of permutations with effect size >= observed
+                - n_permutations: Number of permutations run
+                - null_distribution: List of effect sizes from permutations
+
+        Raises:
+            ValueError: If groups have not been set via set_groups().
+        """
+        if not hasattr(self, 'groups') or not self.groups:
+            raise ValueError("No groups defined. Call set_groups() first.")
+
+        if random_seed is not None:
+            np.random.seed(random_seed)
+
+        # Get all participants in groups
+        all_pids = []
+        group_sizes = []
+        for group_name, members in self.groups.items():
+            all_pids.extend(members)
+            group_sizes.append(len(members))
+
+        n_participants = len(all_pids)
+
+        # Normalize aggregate parameter
+        if aggregate in ("distribution", "none"):
+            aggregate_mode = "distribution"
+        else:
+            aggregate_mode = "mean"
+
+        # Prepare scores for distance computation
+        if aggregate_mode == "mean":
+            scores = {
+                pid: self.scores_by_participant[pid].mean(axis=0)
+                for pid in all_pids
+            }
+        else:
+            scores = {
+                pid: self.scores_by_participant[pid]
+                for pid in all_pids
+            }
+
+        # Compute full pairwise distance matrix (once)
+        dist_matrix, pid_order = compute_pairwise_distances(scores, metric=metric, **kwargs)
+        pid_to_idx = {pid: i for i, pid in enumerate(pid_order)}
+
+        def compute_effect_size_from_labels(group_labels: Dict[str, List[str]]) -> Optional[float]:
+            """Compute effect size given group label assignments."""
+            # Within-group distances
+            all_within = []
+            for group_name, members in group_labels.items():
+                if len(members) < 2:
+                    continue
+                within_dists = []
+                for i, pid_i in enumerate(members):
+                    for pid_j in members[i + 1:]:
+                        idx_i = pid_to_idx[pid_i]
+                        idx_j = pid_to_idx[pid_j]
+                        within_dists.append(dist_matrix[idx_i, idx_j])
+                if within_dists:
+                    all_within.append(np.mean(within_dists))
+
+            # Between-group distances
+            all_between = []
+            group_names = list(group_labels.keys())
+            for i, group_i in enumerate(group_names):
+                for group_j in group_names[i + 1:]:
+                    members_i = group_labels[group_i]
+                    members_j = group_labels[group_j]
+                    between_dists = []
+                    for pid_i in members_i:
+                        for pid_j in members_j:
+                            idx_i = pid_to_idx[pid_i]
+                            idx_j = pid_to_idx[pid_j]
+                            between_dists.append(dist_matrix[idx_i, idx_j])
+                    if between_dists:
+                        all_between.append(np.mean(between_dists))
+
+            # Compute effect size
+            if all_within and all_between:
+                mean_within = np.mean(all_within)
+                mean_between = np.mean(all_between)
+                if mean_within > 0:
+                    return mean_between / mean_within
+            return None
+
+        # Compute observed effect size
+        observed_effect_size = compute_effect_size_from_labels(self.groups)
+
+        if observed_effect_size is None:
+            logger.warning("Could not compute observed effect size")
+            return {
+                "observed_effect_size": None,
+                "p_value": None,
+                "n_permutations": n_permutations,
+                "null_distribution": [],
+            }
+
+        # Run permutations
+        null_distribution = []
+        group_names = list(self.groups.keys())
+
+        for _ in range(n_permutations):
+            # Shuffle participant IDs
+            shuffled_pids = np.random.permutation(all_pids).tolist()
+
+            # Assign to groups based on original group sizes
+            permuted_groups = {}
+            start_idx = 0
+            for i, group_name in enumerate(group_names):
+                end_idx = start_idx + group_sizes[i]
+                permuted_groups[group_name] = shuffled_pids[start_idx:end_idx]
+                start_idx = end_idx
+
+            # Compute effect size for this permutation
+            perm_effect_size = compute_effect_size_from_labels(permuted_groups)
+            if perm_effect_size is not None:
+                null_distribution.append(perm_effect_size)
+
+        # Compute p-value (proportion of permutations >= observed)
+        null_distribution = np.array(null_distribution)
+        p_value = float(np.mean(null_distribution >= observed_effect_size))
+
+        logger.info(
+            f"Permutation test: observed effect size = {observed_effect_size:.3f}, "
+            f"p-value = {p_value:.4f} ({n_permutations} permutations)"
+        )
+
+        return {
+            "observed_effect_size": float(observed_effect_size),
+            "p_value": p_value,
+            "n_permutations": n_permutations,
+            "null_distribution": null_distribution.tolist(),
+        }
+
 
 # =============================================================================
 # Convenience Functions
@@ -1331,6 +1489,7 @@ class ComparisonVisualizer:
         figsize: Tuple[int, int] = (12, 10),
         marker_size: int = 80,
         show_centroids: bool = True,
+        show_confidence_ellipses: bool = False,
         show_legend: bool = True,
         connect_same_entities: bool = False,
         title: str = "Multi-Participant Entity Comparison",
@@ -1348,6 +1507,8 @@ class ComparisonVisualizer:
             figsize: Figure size.
             marker_size: Size of entity markers.
             show_centroids: Show centroid marker for each participant.
+            show_confidence_ellipses: Show 95% confidence ellipses around
+                each participant's entity distribution (requires >= 3 entities).
             show_legend: Show participant legend.
             connect_same_entities: Draw lines connecting same entity across participants.
             title: Plot title.
@@ -1357,6 +1518,7 @@ class ComparisonVisualizer:
         """
         import matplotlib.pyplot as plt
         from matplotlib import gridspec
+        from matplotlib.patches import Ellipse
 
         # Validate dimensions
         dims = dimension_names or self.comparison.dimension_names
@@ -1417,6 +1579,7 @@ class ComparisonVisualizer:
                                edgecolors='white', linewidths=0.5, label=pid)
 
             # Plot centroid
+            cx, cy = None, None
             if show_centroids:
                 centroid_scores = self._normalize_scores(scores.mean(axis=0))
                 cx, cy = self._barycentric_to_cartesian(
@@ -1424,6 +1587,34 @@ class ComparisonVisualizer:
                 )
                 ax.scatter([cx], [cy], s=200, c=[color], marker='X',
                           edgecolors='black', linewidths=2, zorder=10)
+
+            # Draw 95% confidence ellipse around the entity scatter
+            if show_confidence_ellipses and len(xs) >= 3:
+                xs_arr, ys_arr = np.array(xs), np.array(ys)
+                cov = np.cov(xs_arr, ys_arr)
+                eigenvalues, eigenvectors = np.linalg.eigh(cov)
+                order = eigenvalues.argsort()[::-1]
+                eigenvalues = eigenvalues[order]
+                eigenvectors = eigenvectors[:, order]
+
+                # 95% confidence: chi2(2) = 5.991
+                chi2_val = 5.991
+                width = 2 * np.sqrt(chi2_val * max(eigenvalues[0], 1e-10))
+                height = 2 * np.sqrt(chi2_val * max(eigenvalues[1], 1e-10))
+                angle = np.degrees(np.arctan2(
+                    eigenvectors[1, 0], eigenvectors[0, 0]
+                ))
+
+                ellipse_cx = cx if cx is not None else np.mean(xs_arr)
+                ellipse_cy = cy if cy is not None else np.mean(ys_arr)
+
+                ellipse = Ellipse(
+                    xy=(ellipse_cx, ellipse_cy),
+                    width=width, height=height, angle=angle,
+                    facecolor=color, alpha=0.1,
+                    edgecolor=color, linewidth=1.5, linestyle="--",
+                )
+                ax.add_patch(ellipse)
 
             # For legend
             legend_handles.append(plt.Line2D([0], [0], marker='o', color='w',
@@ -1526,7 +1717,9 @@ class ComparisonVisualizer:
             order = [result.participant_ids.index(pid) for pid in ordered_ids]
             ordered_matrix = result.distance_matrix[np.ix_(order, order)]
 
-            fig, ax_heatmap = plt.subplots(figsize=figsize)
+            # Use wider figure to accommodate group labels on right
+            group_figsize = (figsize[0] + 2, figsize[1])
+            fig, ax_heatmap = plt.subplots(figsize=group_figsize)
 
         elif show_dendrogram and n >= 3:
             from scipy.cluster.hierarchy import dendrogram, linkage
@@ -1576,40 +1769,60 @@ class ComparisonVisualizer:
         cbar = plt.colorbar(im, ax=ax_heatmap, shrink=0.8)
         cbar.set_label(f'{result.metric.capitalize()} Distance', fontsize=10)
 
-        # Draw group boundaries if groups are defined
+        # Build group color mapping for labels
+        group_colors = {}
+        pid_to_group = {}
         if groups and group_boundaries:
+            # Use consistent colors from participant_colors
+            for g_idx, (start, end, group_name) in enumerate(group_boundaries):
+                group_colors[group_name] = self.participant_colors[g_idx % len(self.participant_colors)]
+                for pid in ordered_ids[start:end]:
+                    pid_to_group[pid] = group_name
+
+            # Draw boundary lines around group blocks
             for start, end, group_name in group_boundaries:
-                # Draw rectangle around group block
-                rect_width = end - start
                 ax_heatmap.axhline(y=start - 0.5, xmin=0, xmax=1, color='black', linewidth=2)
                 ax_heatmap.axhline(y=end - 0.5, xmin=0, xmax=1, color='black', linewidth=2)
                 ax_heatmap.axvline(x=start - 0.5, ymin=0, ymax=1, color='black', linewidth=2)
                 ax_heatmap.axvline(x=end - 0.5, ymin=0, ymax=1, color='black', linewidth=2)
 
-            # Add group labels on the right side
+            # Add group labels on TOP of the heatmap (above the columns)
             for start, end, group_name in group_boundaries:
-                mid = (start + end) / 2
-                ax_heatmap.annotate(
+                mid = (start + end - 1) / 2  # Center of group columns
+                ax_heatmap.text(
+                    mid,
+                    -1.5,  # Position above the heatmap
                     group_name,
-                    xy=(len(ordered_ids), mid),
-                    xytext=(5, 0),
-                    textcoords='offset points',
-                    fontsize=9,
+                    fontsize=11,
                     fontweight='bold',
-                    va='center',
-                    ha='left',
+                    va='bottom',
+                    ha='center',
+                    color=group_colors[group_name],
+                    clip_on=False,
                 )
 
         # Add labels
         ax_heatmap.set_xticks(range(len(ordered_ids)))
         ax_heatmap.set_yticks(range(len(ordered_ids)))
 
-        # Truncate long labels
-        x_labels = [pid[:15] + "..." if len(pid) > 15 else pid for pid in ordered_ids]
-        y_labels = [pid[:15] + "..." if len(pid) > 15 else pid for pid in ordered_ids]
+        # Use full participant IDs (adjust font size based on number of participants)
+        label_fontsize = 8 if len(ordered_ids) <= 10 else 7 if len(ordered_ids) <= 15 else 6
 
-        ax_heatmap.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=8)
-        ax_heatmap.set_yticklabels(y_labels, fontsize=8)
+        ax_heatmap.set_xticklabels(ordered_ids, rotation=45, ha='right', fontsize=label_fontsize)
+        ax_heatmap.set_yticklabels(ordered_ids, fontsize=label_fontsize)
+
+        # Color-code the tick labels by group membership
+        if groups and pid_to_group:
+            # Color x-axis labels
+            for tick_label in ax_heatmap.get_xticklabels():
+                pid = tick_label.get_text()
+                if pid in pid_to_group:
+                    tick_label.set_color(group_colors[pid_to_group[pid]])
+            # Color y-axis labels
+            for tick_label in ax_heatmap.get_yticklabels():
+                pid = tick_label.get_text()
+                if pid in pid_to_group:
+                    tick_label.set_color(group_colors[pid_to_group[pid]])
 
         # Add values to cells
         if show_values and len(ordered_ids) <= 15:
@@ -1902,6 +2115,7 @@ class ComparisonVisualizer:
             raise ValueError("Need at least 2 participants for similarity map")
 
         # Compute 2D embedding
+        actual_method = method  # Track which method was actually used
         if method == "umap":
             try:
                 import umap
@@ -1915,9 +2129,12 @@ class ComparisonVisualizer:
                 embedding = reducer.fit_transform(result.distance_matrix)
             except ImportError:
                 logger.warning("UMAP not available, falling back to MDS")
-                method = "mds"
+                actual_method = "mds"
+            except Exception as e:
+                logger.warning(f"UMAP failed ({e}), falling back to MDS")
+                actual_method = "mds"
 
-        if method == "mds":
+        if actual_method == "mds":
             mds = MDS(
                 n_components=2,
                 dissimilarity="precomputed",
@@ -2014,8 +2231,8 @@ class ComparisonVisualizer:
                 logger.debug(f"Could not draw convex hulls: {e}")
 
         # Style
-        ax.set_xlabel(f'{method.upper()} Dimension 1', fontsize=10)
-        ax.set_ylabel(f'{method.upper()} Dimension 2', fontsize=10)
+        ax.set_xlabel(f'{actual_method.upper()} Dimension 1', fontsize=10)
+        ax.set_ylabel(f'{actual_method.upper()} Dimension 2', fontsize=10)
         ax.grid(alpha=0.3, linestyle='--')
 
         # Add legend for groups
@@ -2070,7 +2287,7 @@ class ComparisonVisualizer:
         # Title
         aggregate_mode = getattr(result, 'aggregate', 'mean')
         mode_label = "centroid" if aggregate_mode == "mean" else "distribution"
-        plot_title = title or f"Participant Similarity Map ({result.metric.capitalize()}, {mode_label}, {method.upper()})"
+        plot_title = title or f"Participant Similarity Map ({result.metric.capitalize()}, {mode_label}, {actual_method.upper()})"
         ax.set_title(plot_title, fontsize=12, fontweight='bold', pad=10)
 
         plt.tight_layout()
