@@ -732,9 +732,9 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--metric",
-        choices=["aitchison", "emd", "cosine", "euclidean"],
-        default="aitchison",
-        help="Distance metric for comparison (default: aitchison).",
+        choices=["euclidean", "cosine", "aitchison", "emd"],
+        default="euclidean",
+        help="Distance metric for comparison (default: euclidean). Use 'aitchison' only for compositional data.",
     )
     parser.add_argument(
         "--aggregate",
@@ -1061,9 +1061,9 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
     """
     from qualitative_analysis.entity.comparison import (
         ParticipantComparison,
-        ComparisonVisualizer,
         GroupComparisonResult,
     )
+    from qualitative_analysis.entity.comparison_viz import ComparisonVisualizer
 
     input_path = Path(args.input_csv)
     if not input_path.exists():
@@ -1825,9 +1825,9 @@ def add_entity_compare_viz_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--metric",
-        choices=["aitchison", "emd", "cosine", "euclidean"],
-        default="aitchison",
-        help="Distance metric for heatmap/similarity-map (default: aitchison).",
+        choices=["euclidean", "cosine", "aitchison", "emd"],
+        default="euclidean",
+        help="Distance metric for heatmap/similarity-map (default: euclidean).",
     )
     parser.add_argument(
         "--aggregate",
@@ -1904,10 +1904,8 @@ async def run_entity_compare_viz(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success)
     """
-    from qualitative_analysis.entity.comparison import (
-        ParticipantComparison,
-        ComparisonVisualizer,
-    )
+    from qualitative_analysis.entity.comparison import ParticipantComparison
+    from qualitative_analysis.entity.comparison_viz import ComparisonVisualizer
 
     input_path = Path(args.input_csv)
     if not input_path.exists():
@@ -2071,9 +2069,9 @@ def add_entity_report_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--metric",
-        choices=["aitchison", "emd", "cosine", "euclidean"],
-        default="aitchison",
-        help="Distance metric (default: aitchison).",
+        choices=["euclidean", "cosine", "aitchison", "emd"],
+        default="euclidean",
+        help="Distance metric (default: euclidean).",
     )
     parser.add_argument(
         "--groups",
@@ -2112,9 +2110,8 @@ async def run_entity_report(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success)
     """
-    from qualitative_analysis.entity.comparison import (
-        ParticipantComparison,
-    )
+    from qualitative_analysis.entity.comparison import ParticipantComparison
+    from qualitative_analysis.entity_report import generate_comparison_report
 
     input_path = Path(args.input_csv)
     if not input_path.exists():
@@ -2130,9 +2127,6 @@ async def run_entity_report(args: argparse.Namespace) -> int:
         entity_col=args.entity_col,
         dimensions=dimension_names,
     )
-
-    n_participants = len(comparison.scores_by_participant)
-    pids = list(comparison.scores_by_participant.keys())
 
     # Parse groups
     groups = None
@@ -2151,113 +2145,16 @@ async def run_entity_report(args: argparse.Namespace) -> int:
     # Compute distances
     result = comparison.compute_distances(metric=args.metric, aggregate="mean")
 
-    # Build report
-    lines = []
-    lines.append(f"# Entity Comparison Report")
-    lines.append("")
-    lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append(f"**Input:** `{input_path.name}`")
-    lines.append(f"**Dimensions:** {', '.join(d.capitalize() for d in dimension_names)}")
-    lines.append(f"**Participants:** {n_participants}")
-    lines.append(f"**Distance Metric:** {args.metric.capitalize()}")
-    lines.append("")
-
-    # --- Summary ---
-    lines.append("## Summary Statistics")
-    lines.append("")
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|-------|")
-    lines.append(f"| Mean distance | {result.mean_distance:.4f} |")
-    lines.append(f"| Median distance | {result.median_distance:.4f} |")
-    lines.append(f"| Min distance | {result.min_distance:.4f} |")
-    lines.append(f"| Max distance | {result.max_distance:.4f} |")
-    lines.append(f"| Most similar | {result.most_similar_pair[0]} <-> {result.most_similar_pair[1]} ({result.most_similar_pair[2]:.4f}) |")
-    lines.append(f"| Most different | {result.most_different_pair[0]} <-> {result.most_different_pair[1]} ({result.most_different_pair[2]:.4f}) |")
-    lines.append("")
-
-    # --- Per-participant dimension means ---
-    lines.append("## Participant Dimension Means")
-    lines.append("")
-
-    header = "| Participant | " + " | ".join(d.capitalize() for d in dimension_names) + " |"
-    sep = "|------------|" + "|".join("-" * (len(d) + 2) for d in dimension_names) + "|"
-    lines.append(header)
-    lines.append(sep)
-
-    for pid in sorted(pids):
-        scores = comparison.scores_by_participant[pid]
-        # Compute mean per dimension
-        dim_means = {}
-        for dim in dimension_names:
-            vals = [s[dimension_names.index(dim)] for s in scores]
-            dim_means[dim] = np.mean(vals)
-        row = f"| {pid} | " + " | ".join(f"{dim_means[d]:.1f}" for d in dimension_names) + " |"
-        lines.append(row)
-
-    lines.append("")
-
-    # --- Group comparison ---
-    if groups:
-        lines.append("## Group Comparison")
-        lines.append("")
-
-        group_result = comparison.compute_group_distances(
-            metric=args.metric, aggregate="mean"
-        )
-        lines.append(group_result.summary_str())
-        lines.append("")
-
-    # --- Bayesian results ---
-    bayesian_dir = getattr(args, "bayesian_dir", None)
-    if bayesian_dir:
-        bayesian_path = Path(bayesian_dir)
-        contrasts_file = bayesian_path / "group_contrasts.json"
-        icc_file = bayesian_path / "icc_decomposition.json"
-
-        if contrasts_file.exists():
-            lines.append("## Bayesian Group Contrasts")
-            lines.append("")
-
-            with open(contrasts_file) as f:
-                contrasts = json.load(f)
-
-            for dim, dim_contrasts in contrasts.items():
-                lines.append(f"### {dim.capitalize()}")
-                lines.append("")
-                lines.append("| Comparison | Mean Δ | 94% HDI | P(direction) |")
-                lines.append("|-----------|--------|---------|--------------|")
-
-                for pair_key, c in dim_contrasts.items():
-                    p_dir = max(c.get("p_a_gt_b", 0), c.get("p_b_gt_a", 0))
-                    lines.append(
-                        f"| {c['group_a']} vs {c['group_b']} "
-                        f"| {c['mean_diff']:+.2f} "
-                        f"| [{c['hdi_3%']:+.2f}, {c['hdi_97%']:+.2f}] "
-                        f"| {p_dir:.3f} |"
-                    )
-                lines.append("")
-
-        if icc_file.exists():
-            lines.append("## Variance Decomposition (ICC)")
-            lines.append("")
-            lines.append("| Dimension | Group | Entity | Participant | Run |")
-            lines.append("|-----------|-------|--------|-------------|-----|")
-
-            with open(icc_file) as f:
-                icc = json.load(f)
-
-            for dim, icc_data in icc.items():
-                lines.append(
-                    f"| {dim.capitalize()} "
-                    f"| {icc_data['icc_group']['mean']:.1%} "
-                    f"| {icc_data['icc_entity']['mean']:.1%} "
-                    f"| {icc_data['icc_participant']['mean']:.1%} "
-                    f"| {icc_data['icc_run']['mean']:.1%} |"
-                )
-            lines.append("")
-
-    lines.append("---")
-    lines.append(f"*Report generated by qualitative-analysis v{PACKAGE_VERSION}*")
+    # Generate report
+    report_md = generate_comparison_report(
+        comparison=comparison,
+        result=result,
+        dimension_names=dimension_names,
+        metric=args.metric,
+        input_filename=input_path.name,
+        groups=groups,
+        bayesian_dir=getattr(args, "bayesian_dir", None),
+    )
 
     # Write report
     if args.output:
@@ -2267,7 +2164,7 @@ async def run_entity_report(args: argparse.Namespace) -> int:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+        f.write(report_md)
 
     print(f"Report saved to: {output_path}")
     return 0

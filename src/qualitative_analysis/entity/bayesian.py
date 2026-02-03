@@ -144,12 +144,14 @@ def prepare_beta_data(
 
     long_df = pd.DataFrame(records)
 
-    # Rescale [0, 100] -> (0, 1) using Smithson & Verkuilen (2006) squeeze
-    N = len(long_df)
-    long_df["y"] = (long_df["score"] * (N - 1) + 0.5) / (N * 100.0)
+    # Rescale [0, 100] -> (0, 1) using Smithson & Verkuilen (2006) squeeze.
+    # N is computed per dimension (the sample size of the variable being modeled),
+    # since each dimension is fit independently.
+    eps = 1e-6
+    dim_counts = long_df.groupby("dimension")["score"].transform("count")
+    long_df["y"] = (long_df["score"] * (dim_counts - 1) + 0.5) / (dim_counts * 100.0)
 
     # Clip to ensure strictly within (0, 1)
-    eps = 1e-6
     long_df["y"] = long_df["y"].clip(eps, 1.0 - eps)
 
     # Integer-encode indices (convert to plain Python str for PyMC/nutpie compat)
@@ -812,7 +814,10 @@ class BayesianEntityModel:
 
             # Convert to probability scale (0-100)
             posterior_prob = 1 / (1 + np.exp(-theta_mean)) * 100
-            posterior_sd_prob = theta_sd * 100 / 4  # approximate via delta method
+            # Delta method: Var(g(θ)) ≈ g'(θ_mean)² * Var(θ)
+            # where g = sigmoid, g' = sigmoid(θ)(1 - sigmoid(θ))
+            sigmoid_mean = 1 / (1 + np.exp(-theta_mean))
+            posterior_sd_prob = theta_sd * sigmoid_mean * (1 - sigmoid_mean) * 100
 
             entity_names = self.data["entity_names"]
             records = []

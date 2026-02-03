@@ -453,12 +453,16 @@ Respond with ONLY the JSON object, nothing else."""
         
         # Process source clusters
         total_source = len(source_clusters)
+        print(f"\nGenerating canonical labels for {total_source} source clusters...")
         for i, cluster in enumerate(source_clusters):
             if i in processed_source:
                 continue
             
             await self._process_single_cluster_llm(cluster, llm)
             processed_source.add(i)
+            
+            # Print progress
+            print(f"\rSource clusters: {len(processed_source)}/{total_source} ({100*len(processed_source)/total_source:.1f}%)", end="", flush=True)
             
             # Save checkpoint periodically
             if checkpoint_path and (len(processed_source) % checkpoint_interval == 0):
@@ -474,14 +478,20 @@ Respond with ONLY the JSON object, nothing else."""
                 )
                 logger.info(f"Checkpoint saved: {len(processed_source)}/{total_source} source clusters")
         
+        print()  # Newline after source progress
+        
         # Process target clusters
         total_target = len(target_clusters)
+        print(f"Generating canonical labels for {total_target} target clusters...")
         for i, cluster in enumerate(target_clusters):
             if i in processed_target:
                 continue
             
             await self._process_single_cluster_llm(cluster, llm)
             processed_target.add(i)
+            
+            # Print progress
+            print(f"\rTarget clusters: {len(processed_target)}/{total_target} ({100*len(processed_target)/total_target:.1f}%)", end="", flush=True)
             
             # Save checkpoint periodically
             if checkpoint_path and (len(processed_target) % checkpoint_interval == 0):
@@ -496,6 +506,8 @@ Respond with ONLY the JSON object, nothing else."""
                     total_target,
                 )
                 logger.info(f"Checkpoint saved: {len(processed_target)}/{total_target} target clusters")
+        
+        print()  # Newline after target progress
         
         # Delete checkpoint on successful completion
         if checkpoint_path and checkpoint_path.exists():

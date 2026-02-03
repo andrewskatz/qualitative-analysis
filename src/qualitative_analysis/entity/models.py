@@ -11,6 +11,8 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional, Tuple
 import statistics
 
+from scipy.stats import t as t_dist
+
 
 # =============================================================================
 # DIMENSION DEFINITIONS
@@ -212,11 +214,9 @@ class DimensionScore:
         # Standard deviation
         std_dev = statistics.stdev(scores) if n > 1 else 0.0
 
-        # 95% CI using t-distribution approximation
-        # For small samples, use a simple approximation
+        # 95% CI using t-distribution
         if n > 1:
-            # Approximate t-value for 95% CI
-            t_value = 2.0 if n < 30 else 1.96
+            t_value = float(t_dist.ppf(0.975, df=n - 1))
             margin = t_value * std_dev / (n ** 0.5)
             ci_low = max(0, mean_val - margin)
             ci_high = min(100, mean_val + margin)

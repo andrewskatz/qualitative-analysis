@@ -45,7 +45,6 @@ from qualitative_analysis.entity.comparison import (
     ParticipantComparison,
     ComparisonResult,
     GroupComparisonResult,
-    ComparisonVisualizer,
     aitchison_distance,
     wasserstein_distance_compositional,
     compute_pairwise_distances,
@@ -53,6 +52,7 @@ from qualitative_analysis.entity.comparison import (
     clr_transform,
     ilr_transform,
 )
+from qualitative_analysis.entity.comparison_viz import ComparisonVisualizer
 
 # Bayesian modeling (optional — requires pymc, arviz, nutpie)
 try:
