@@ -289,10 +289,24 @@ class ParticipantComparison:
             score_vector = []
             for dim in dimensions:
                 col_name = dimension_pattern.format(dim=dim)
-                try:
-                    score = float(row.get(col_name, 0))
-                except (ValueError, TypeError):
+                raw_val = row.get(col_name)
+                if raw_val is None or raw_val == "":
+                    logger.warning(
+                        f"Missing value for dimension '{dim}' "
+                        f"(column '{col_name}') for participant "
+                        f"'{participant}', entity '{entity}' — defaulting to 0.0"
+                    )
                     score = 0.0
+                else:
+                    try:
+                        score = float(raw_val)
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"Unparseable value '{raw_val}' for dimension "
+                            f"'{dim}' (column '{col_name}') for participant "
+                            f"'{participant}', entity '{entity}' — defaulting to 0.0"
+                        )
+                        score = 0.0
                 score_vector.append(score)
 
             if participant not in participant_scores:

@@ -255,6 +255,23 @@ def add_graph_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Log LLM prompts and responses",
     )
+    parser.add_argument(
+        "--min-label-size",
+        type=int,
+        default=None,
+        help="Only label clusters with at least N members (reduces clutter)",
+    )
+    parser.add_argument(
+        "--max-cluster-labels",
+        type=int,
+        default=None,
+        help="Only show labels for the N largest clusters",
+    )
+    parser.add_argument(
+        "--hide-node-labels",
+        action="store_true",
+        help="Hide individual node labels, show only cluster region labels",
+    )
 
 
 def add_pipeline_args(parser: argparse.ArgumentParser) -> None:
@@ -691,6 +708,9 @@ def run_graph(args) -> int:
             noise_handling=getattr(args, 'noise_handling', 'label'),
             model=getattr(args, 'model', None),
             provider_config=provider_config if getattr(args, 'model', None) else None,
+            min_label_size=getattr(args, 'min_label_size', None),
+            max_cluster_labels=getattr(args, 'max_cluster_labels', None),
+            hide_node_labels=getattr(args, 'hide_node_labels', False),
         )
         saved_paths.append(clustered_path)
         print(f"Generated clustered visualization: {clustered_path}")

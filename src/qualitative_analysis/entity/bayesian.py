@@ -221,6 +221,17 @@ class BayesianEntityModel:
         model.save_results(output_dir)
     """
 
+    # Default prior configuration. Override any key via the prior_config
+    # constructor argument. All values are on the logit scale unless noted.
+    DEFAULT_PRIOR_CONFIG: Dict[str, Any] = {
+        "mu_pop_sigma": 1.5,        # Population mean: Normal(0, sigma)
+        "sigma_entity_sigma": 2.0,   # Entity spread: HalfNormal(sigma)
+        "sigma_group_sigma": 0.5,    # Group effect spread: HalfNormal(sigma)
+        "sigma_participant_sigma": 1.0,  # Participant spread: HalfNormal(sigma)
+        "kappa_alpha": 5.0,          # Run precision: Gamma(alpha, beta)
+        "kappa_beta": 0.1,           # Run precision: Gamma(alpha, beta)
+    }
+
     def __init__(
         self,
         scores_df: pd.DataFrame,
@@ -230,6 +241,7 @@ class BayesianEntityModel:
         entity_col: str = "entity",
         group_col: str = "group",
         n_runs: Optional[int] = None,
+        prior_config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the Bayesian model.
@@ -242,6 +254,13 @@ class BayesianEntityModel:
             entity_col: Column name for entities.
             group_col: Column name for group membership.
             n_runs: Number of scoring runs (auto-detected if None).
+            prior_config: Optional dict overriding prior hyperparameters. Supported keys:
+                - ``mu_pop_sigma`` (default 1.5): SD for population mean Normal prior.
+                - ``sigma_entity_sigma`` (default 2.0): SD for entity HalfNormal prior.
+                - ``sigma_group_sigma`` (default 0.5): SD for group effect HalfNormal prior.
+                - ``sigma_participant_sigma`` (default 1.0): SD for participant HalfNormal prior.
+                - ``kappa_alpha`` (default 5.0): Shape for run-precision Gamma prior.
+                - ``kappa_beta`` (default 0.1): Rate for run-precision Gamma prior.
         """
         _require_pymc()
 
@@ -250,6 +269,19 @@ class BayesianEntityModel:
         self.participant_col = participant_col
         self.entity_col = entity_col
         self.group_col = group_col
+
+        # Merge user overrides into defaults
+        self.prior_config = {**self.DEFAULT_PRIOR_CONFIG}
+        if prior_config:
+            unknown_keys = set(prior_config) - set(self.DEFAULT_PRIOR_CONFIG)
+            if unknown_keys:
+                logger.warning(
+                    f"Unknown prior_config keys ignored: {unknown_keys}. "
+                    f"Valid keys: {list(self.DEFAULT_PRIOR_CONFIG.keys())}"
+                )
+            self.prior_config.update(
+                {k: v for k, v in prior_config.items() if k in self.DEFAULT_PRIOR_CONFIG}
+            )
 
         # Prepare data
         self.data = prepare_beta_data(
@@ -267,6 +299,15 @@ class BayesianEntityModel:
             f"{self.data['n_runs']} runs, "
             f"{len(dimensions)} dimensions"
         )
+
+        # Warn about single-participant groups
+        for group_name, members in groups.items():
+            if len(members) < 2:
+                logger.warning(
+                    f"Group '{group_name}' has only {len(members)} participant(s). "
+                    f"The group effect will be confounded with the participant "
+                    f"effect, producing uninterpretable group posteriors."
+                )
 
     def build_model(self, dimension: str) -> Any:
         """
@@ -335,25 +376,27 @@ class BayesianEntityModel:
             "obs": np.arange(len(y_obs)),
         }
 
+        pc = self.prior_config
+
         with pm.Model(coords=coords) as model:
             # --- Population-level ---
-            mu_pop = pm.Normal("mu_pop", mu=0, sigma=1.5)
+            mu_pop = pm.Normal("mu_pop", mu=0, sigma=pc["mu_pop_sigma"])
 
             # --- Entity-level (non-centered) ---
-            sigma_entity = pm.HalfNormal("sigma_entity", sigma=2)
+            sigma_entity = pm.HalfNormal("sigma_entity", sigma=pc["sigma_entity_sigma"])
             z_entity = pm.Normal("z_entity", mu=0, sigma=1, dims="entity")
             theta = pm.Deterministic(
                 "theta", mu_pop + z_entity * sigma_entity, dims="entity"
             )
 
             # --- Group effects ---
-            sigma_group = pm.HalfNormal("sigma_group", sigma=0.5)
+            sigma_group = pm.HalfNormal("sigma_group", sigma=pc["sigma_group_sigma"])
             group_effect = pm.Normal(
                 "group_effect", mu=0, sigma=sigma_group, dims="group"
             )
 
             # --- Participant-level (non-centered) ---
-            sigma_participant = pm.HalfNormal("sigma_participant", sigma=1)
+            sigma_participant = pm.HalfNormal("sigma_participant", sigma=pc["sigma_participant_sigma"])
             z_participant = pm.Normal(
                 "z_participant", mu=0, sigma=1, dims="ep_pair"
             )
@@ -370,7 +413,7 @@ class BayesianEntityModel:
             mu_obs = mu_ep[obs_ep_idx]
 
             # --- Run-level precision ---
-            kappa = pm.Gamma("kappa", alpha=5, beta=0.1)
+            kappa = pm.Gamma("kappa", alpha=pc["kappa_alpha"], beta=pc["kappa_beta"])
 
             # --- Likelihood ---
             pm.Beta(
@@ -554,10 +597,20 @@ class BayesianEntityModel:
         if hasattr(trace, "sample_stats") and "diverging" in trace.sample_stats:
             divergences = int(trace.sample_stats["diverging"].values.sum())
 
+        # Convergence tiers:
+        #   ESS >= 1000: "converged" (Vehtari et al. 2021 recommendation)
+        #   400 <= ESS < 1000: "marginal" — posterior summaries may be unreliable
+        #   ESS < 400: not converged
+        ess_min = min(ess_bulk_min, ess_tail_min)
         converged = (
             rhat_max < 1.01
-            and ess_bulk_min > 400
-            and ess_tail_min > 400
+            and ess_min >= 1000
+            and divergences == 0
+        )
+        marginal = (
+            not converged
+            and rhat_max < 1.01
+            and ess_min >= 400
             and divergences == 0
         )
 
@@ -568,13 +621,27 @@ class BayesianEntityModel:
             "ess_tail_min": round(ess_tail_min, 1),
             "divergences": divergences,
             "converged": converged,
+            "convergence_status": (
+                "converged" if converged
+                else "marginal" if marginal
+                else "not_converged"
+            ),
         }
+
+        if marginal:
+            logger.warning(
+                f"  Diagnostics [{dimension}]: MARGINAL convergence — "
+                f"ESS min={ess_min:.0f} is between 400 and 1000. "
+                f"Posterior summaries may be unreliable. Consider increasing "
+                f"draws or thinning."
+            )
 
         logger.info(
             f"  Diagnostics [{dimension}]: R-hat max={diag['rhat_max']}, "
             f"ESS bulk min={diag['ess_bulk_min']}, "
             f"ESS tail min={diag['ess_tail_min']}, "
-            f"divergences={divergences}"
+            f"divergences={divergences}, "
+            f"status={diag['convergence_status']}"
         )
 
         return diag
@@ -667,6 +734,8 @@ class BayesianEntityModel:
         Returns:
             Dict with per-dimension, per-pair contrast summaries.
         """
+        import arviz as az
+
         contrasts = {}
 
         for dim, result in self.results.items():
@@ -691,13 +760,14 @@ class BayesianEntityModel:
                     delta = prob_a - prob_b
 
                     pair_key = f"{g_a}_vs_{g_b}"
+                    hdi_bounds = az.hdi(delta, hdi_prob=0.94)
                     dim_contrasts[pair_key] = {
                         "group_a": g_a,
                         "group_b": g_b,
                         "mean_diff": round(float(np.mean(delta)), 3),
                         "std_diff": round(float(np.std(delta)), 3),
-                        "hdi_3%": round(float(np.percentile(delta, 3)), 3),
-                        "hdi_97%": round(float(np.percentile(delta, 97)), 3),
+                        "hdi_3%": round(float(hdi_bounds[0]), 3),
+                        "hdi_97%": round(float(hdi_bounds[1]), 3),
                         "p_a_gt_b": round(float(np.mean(delta > 0)), 4),
                         "p_b_gt_a": round(float(np.mean(delta < 0)), 4),
                         "rope_delta": rope_delta,
@@ -729,6 +799,8 @@ class BayesianEntityModel:
         Returns:
             Dict with per-dimension ICC values.
         """
+        import arviz as az
+
         icc_results = {}
 
         for dim, result in self.results.items():
@@ -754,26 +826,31 @@ class BayesianEntityModel:
             icc_participant = var_participant / total_var
             icc_run = var_run / total_var
 
+            hdi_group = az.hdi(icc_group, hdi_prob=0.94)
+            hdi_entity = az.hdi(icc_entity, hdi_prob=0.94)
+            hdi_participant = az.hdi(icc_participant, hdi_prob=0.94)
+            hdi_run = az.hdi(icc_run, hdi_prob=0.94)
+
             icc_results[dim] = {
                 "icc_group": {
                     "mean": round(float(np.mean(icc_group)), 4),
-                    "hdi_3%": round(float(np.percentile(icc_group, 3)), 4),
-                    "hdi_97%": round(float(np.percentile(icc_group, 97)), 4),
+                    "hdi_3%": round(float(hdi_group[0]), 4),
+                    "hdi_97%": round(float(hdi_group[1]), 4),
                 },
                 "icc_entity": {
                     "mean": round(float(np.mean(icc_entity)), 4),
-                    "hdi_3%": round(float(np.percentile(icc_entity, 3)), 4),
-                    "hdi_97%": round(float(np.percentile(icc_entity, 97)), 4),
+                    "hdi_3%": round(float(hdi_entity[0]), 4),
+                    "hdi_97%": round(float(hdi_entity[1]), 4),
                 },
                 "icc_participant": {
                     "mean": round(float(np.mean(icc_participant)), 4),
-                    "hdi_3%": round(float(np.percentile(icc_participant, 3)), 4),
-                    "hdi_97%": round(float(np.percentile(icc_participant, 97)), 4),
+                    "hdi_3%": round(float(hdi_participant[0]), 4),
+                    "hdi_97%": round(float(hdi_participant[1]), 4),
                 },
                 "icc_run": {
                     "mean": round(float(np.mean(icc_run)), 4),
-                    "hdi_3%": round(float(np.percentile(icc_run, 3)), 4),
-                    "hdi_97%": round(float(np.percentile(icc_run, 97)), 4),
+                    "hdi_3%": round(float(hdi_run[0]), 4),
+                    "hdi_97%": round(float(hdi_run[1]), 4),
                 },
                 "variance_components": {
                     "sigma_group": round(float(np.mean(sig_group)), 4),
@@ -819,6 +896,10 @@ class BayesianEntityModel:
             sigmoid_mean = 1 / (1 + np.exp(-theta_mean))
             posterior_sd_prob = theta_sd * sigmoid_mean * (1 - sigmoid_mean) * 100
 
+            # Grand mean on probability scale (for standard shrinkage formula)
+            mu_pop_samples = post["mu_pop"].values.flatten()
+            grand_mean = float(np.mean(1 / (1 + np.exp(-mu_pop_samples)) * 100))
+
             entity_names = self.data["entity_names"]
             records = []
             for i, ename in enumerate(entity_names):
@@ -826,11 +907,16 @@ class BayesianEntityModel:
                 post_mean = posterior_prob[i]
                 post_sd = posterior_sd_prob[i]
 
-                # Shrinkage: how much the posterior moved from the raw
-                if not np.isnan(raw) and raw != 0:
+                # Standard hierarchical shrinkage:
+                #   (raw - posterior) / (raw - grand_mean)
+                # Values near 1.0 = full shrinkage toward grand mean;
+                # near 0.0 = raw estimate preserved.
+                if (
+                    not np.isnan(raw)
+                    and abs(raw - grand_mean) > 1.0
+                ):
                     shrinkage_pct = round(
-                        abs(post_mean - raw) / abs(raw - 50) * 100
-                        if abs(raw - 50) > 1 else 0.0, 2
+                        (raw - post_mean) / (raw - grand_mean) * 100, 2
                     )
                 else:
                     shrinkage_pct = 0.0
@@ -1290,6 +1376,8 @@ class BayesianVisualizer:
             long_df = self.model.data["long_df"]
             obs_mask = long_df["dimension"] == dim
             obs_scores = long_df.loc[obs_mask, "score"].values  # original 0-100 scale
+            # Per-dimension N for inverse S&V transform
+            n_dim = int(obs_mask.sum())
 
             # Generate posterior predictive samples
             try:
@@ -1306,7 +1394,8 @@ class BayesianVisualizer:
                     n_rep = min(100, flat.shape[0])
                     rep_indices = np.linspace(0, flat.shape[0] - 1, n_rep, dtype=int)
                     for r_idx in rep_indices:
-                        rep_scores = flat[r_idx] * 100  # back to 0-100
+                        # Inverse S&V squeeze: score = (y * N * 100 - 0.5) / (N - 1)
+                        rep_scores = (flat[r_idx] * n_dim * 100 - 0.5) / max(n_dim - 1, 1)
                         ax.hist(
                             rep_scores, bins=30, range=(0, 100),
                             alpha=0.03, color="#1f77b4", density=True,

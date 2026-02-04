@@ -98,3 +98,17 @@ __all__ = [
     "clr_transform",
     "ilr_transform",
 ]
+
+# Conditionally add Bayesian symbols if pymc is available
+try:
+    from qualitative_analysis.entity.bayesian import BayesianEntityModel as _  # noqa: F401
+    __all__.extend([
+        "BayesianEntityModel",
+        "BayesianVisualizer",
+        "BayesianModelResult",
+        "check_pymc_available",
+        "prepare_beta_data",
+    ])
+    del _
+except ImportError:
+    pass

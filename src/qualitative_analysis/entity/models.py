@@ -9,9 +9,12 @@ This module provides data structures for:
 
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional, Tuple
+import logging
 import statistics
 
 from scipy.stats import t as t_dist
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -204,12 +207,9 @@ class DimensionScore:
         mean_val = statistics.mean(scores)
         median_val = statistics.median(scores)
 
-        # Mode - handle multimodal cases
-        try:
-            mode_val = float(statistics.mode(scores))
-        except statistics.StatisticsError:
-            # Multiple modes - use the first one
-            mode_val = float(scores[0])
+        # Mode - handle multimodal cases by taking median of modes
+        modes = statistics.multimode(scores)
+        mode_val = float(statistics.median(modes))
 
         # Standard deviation
         std_dev = statistics.stdev(scores) if n > 1 else 0.0
@@ -322,10 +322,17 @@ class EntityScore:
 
     def get_scores_as_tuple(self, dimensions: List[str]) -> Tuple[float, ...]:
         """Get scores for specified dimensions as a tuple (for ternary plots)."""
-        return tuple(
-            self.dimension_scores.get(dim, DimensionScore.from_scores(dim, [])).mean
-            for dim in dimensions
-        )
+        scores = []
+        for dim in dimensions:
+            if dim not in self.dimension_scores:
+                logger.warning(
+                    f"Dimension '{dim}' not found in scores for entity "
+                    f"'{getattr(self, 'entity', '?')}' — defaulting to 0.0"
+                )
+                scores.append(0.0)
+            else:
+                scores.append(self.dimension_scores[dim].mean)
+        return tuple(scores)
 
 
 @dataclass

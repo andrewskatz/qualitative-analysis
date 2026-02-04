@@ -398,6 +398,14 @@ Respond with JSON:
 
 Respond with ONLY the JSON, nothing else."""
 
+        # Count clusters needing LLM generation (exclude -1/noise and single-member)
+        llm_clusters = [cid for cid, members in clusters.items() if cid != -1 and len(members) > 1]
+        total_llm = len(llm_clusters)
+        processed = 0
+        
+        if total_llm > 0:
+            print(f"\nGenerating labels for {total_llm} clusters...")
+
         for cluster_id, members in clusters.items():
             if cluster_id == -1:
                 labels[cluster_id] = "Other"
@@ -424,6 +432,14 @@ Respond with ONLY the JSON, nothing else."""
             except Exception as e:
                 logger.warning(f"LLM cluster labeling failed for cluster {cluster_id}: {e}")
                 labels[cluster_id] = f"Cluster {cluster_id}"
+            
+            # Update progress
+            processed += 1
+            if total_llm > 0:
+                print(f"\rCluster labels: {processed}/{total_llm} ({100*processed/total_llm:.1f}%)", end="", flush=True)
+        
+        if total_llm > 0:
+            print()  # Newline after progress
         
         logger.info(f"[Clustering] Generated {len(labels)} cluster labels")
         return labels
@@ -668,6 +684,9 @@ Respond with ONLY the JSON, nothing else."""
         noise_handling: str = "label",
         model: Optional[str] = None,
         provider_config: Optional[Dict[str, Any]] = None,
+        min_label_size: Optional[int] = None,
+        max_cluster_labels: Optional[int] = None,
+        hide_node_labels: bool = False,
     ) -> None:
         """
         Export graph as PNG with cluster-based region labeling.
@@ -680,6 +699,9 @@ Respond with ONLY the JSON, nothing else."""
             noise_handling: How to handle outliers: "label", "hide", or "other"
             model: LLM model for cluster labeling (if None, uses generic labels)
             provider_config: LLM provider configuration
+            min_label_size: Only label clusters with at least N members
+            max_cluster_labels: Only show labels for N largest clusters
+            hide_node_labels: Hide individual node labels, show only cluster labels
         """
         try:
             import networkx as nx
@@ -825,8 +847,27 @@ Respond with ONLY the JSON, nothing else."""
         
         # Collect cluster label annotations for adjustText
         texts = []
+        
+        # Build list of clusters to label with their sizes
+        clusters_to_label = []
         for cluster_id, members in clusters.items():
             if cluster_id == -1 and noise_handling != "label":
+                continue
+            # Apply min_label_size filter
+            if min_label_size is not None and len(members) < min_label_size:
+                continue
+            clusters_to_label.append((cluster_id, len(members)))
+        
+        # Apply max_cluster_labels filter (keep largest clusters)
+        if max_cluster_labels is not None and len(clusters_to_label) > max_cluster_labels:
+            clusters_to_label.sort(key=lambda x: x[1], reverse=True)
+            clusters_to_label = clusters_to_label[:max_cluster_labels]
+        
+        clusters_to_label_ids = {cid for cid, _ in clusters_to_label}
+        logger.info(f"[Clustering] Labeling {len(clusters_to_label_ids)} of {len(clusters)} clusters")
+        
+        for cluster_id, members in clusters.items():
+            if cluster_id not in clusters_to_label_ids:
                 continue
             
             points = self._get_cluster_hull_points(pos, cluster_assignments, cluster_id)
