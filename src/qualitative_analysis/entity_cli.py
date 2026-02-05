@@ -893,6 +893,24 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
         help="Save full InferenceData as netCDF files (can be large).",
     )
 
+    # Advanced Bayesian analysis options
+    parser.add_argument(
+        "--loo-compare",
+        action="store_true",
+        help=(
+            "Run LOO-CV model comparison between full (with group effects) "
+            "and reduced (no group effects) models. Requires --method bayesian."
+        ),
+    )
+    parser.add_argument(
+        "--bayes-factor",
+        action="store_true",
+        help=(
+            "Compute Savage-Dickey Bayes Factor for group effects = 0. "
+            "Requires --method bayesian."
+        ),
+    )
+
 
 # =============================================================================
 # GROUP PARSING HELPERS
@@ -1467,6 +1485,44 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                 bayesian_model.save_results(
                     bayesian_dir, rope_delta=rope_delta, save_trace=save_trace
                 )
+
+                # Optional LOO-CV model comparison
+                if getattr(args, "loo_compare", False):
+                    print("\nRunning LOO-CV model comparison...")
+                    import json as _json
+                    loo_results = {}
+                    for dim in dimension_names:
+                        loo_result = bayesian_model.compare_models(
+                            dim,
+                            chains=chains,
+                            draws=args.draws,
+                            tune=args.tune,
+                            sampler=args.sampler,
+                        )
+                        loo_results[dim] = loo_result
+                        print(
+                            f"  {dim}: {loo_result['preferred_model']} model preferred "
+                            f"(ΔELPD = {loo_result['elpd_diff']:.1f} ± {loo_result['se_diff']:.1f})"
+                        )
+                    with open(bayesian_dir / "loo_comparison.json", "w") as f:
+                        _json.dump(loo_results, f, indent=2, default=str)
+                    print(f"LOO-CV results saved to: {bayesian_dir / 'loo_comparison.json'}")
+
+                # Optional Bayes Factor
+                if getattr(args, "bayes_factor", False):
+                    print("\nComputing Bayes Factors...")
+                    import json as _json
+                    bf_results = {}
+                    for dim in dimension_names:
+                        bf_result = bayesian_model.compute_bayes_factor(dim)
+                        bf_results.update(bf_result)
+                        for pair_key, pair_data in bf_result[dim].items():
+                            bf10 = pair_data.get("bf10")
+                            interp = pair_data.get("interpretation", "undefined")
+                            print(f"  {dim} {pair_key}: BF10 = {bf10} ({interp})")
+                    with open(bayesian_dir / "bayes_factors.json", "w") as f:
+                        _json.dump(bf_results, f, indent=2, default=str)
+                    print(f"Bayes Factor results saved to: {bayesian_dir / 'bayes_factors.json'}")
 
                 # Generate visualizations
                 print("\nGenerating Bayesian visualizations...")
@@ -2167,4 +2223,365 @@ async def run_entity_report(args: argparse.Namespace) -> int:
         f.write(report_md)
 
     print(f"Report saved to: {output_path}")
+    return 0
+
+
+# =============================================================================
+# ENTITY AGREEMENT COMMAND (Krippendorff's Alpha)
+# =============================================================================
+
+
+def add_entity_agreement_args(parser: argparse.ArgumentParser) -> None:
+    """Add entity agreement analysis arguments."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to input CSV file with scored entities (from 'qa entity score').",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["run", "participant", "both"],
+        default="both",
+        help=(
+            "Agreement mode: 'run' (LLM run consistency), "
+            "'participant' (inter-participant agreement), or 'both' (default)."
+        ),
+    )
+    parser.add_argument(
+        "--dimensions",
+        default="social,ecological,technological",
+        help="Dimensions to analyze, comma-separated (default: social,ecological,technological).",
+    )
+    parser.add_argument(
+        "--participant-col",
+        default="text_id",
+        help="Column name for participant IDs (default: text_id).",
+    )
+    parser.add_argument(
+        "--entity-col",
+        default="entity",
+        help="Column name for entities (default: entity).",
+    )
+    parser.add_argument(
+        "--n-bootstrap",
+        type=int,
+        default=1000,
+        help="Number of bootstrap samples for confidence interval (default: 1000).",
+    )
+    parser.add_argument(
+        "--confidence",
+        type=float,
+        default=0.95,
+        help="Confidence level for CI (default: 0.95).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory (default: creates agreement_* subdirectory).",
+    )
+
+
+async def run_entity_agreement(args: argparse.Namespace) -> int:
+    """
+    Run inter-rater agreement analysis.
+
+    Computes Krippendorff's Alpha to measure agreement among LLM scoring runs
+    (run-level) or among participants (participant-level).
+    """
+    import json
+    from datetime import datetime
+
+    from qualitative_analysis.entity.agreement import compute_agreement
+
+    input_path = Path(args.input_csv)
+    if not input_path.exists():
+        print(f"Error: Input file not found: {input_path}")
+        return 1
+
+    # Parse dimensions
+    dimension_names = [d.strip() for d in args.dimensions.split(",")]
+
+    # Load data
+    import pandas as pd
+    scores_df = pd.read_csv(input_path)
+
+    # Determine modes to run
+    modes = []
+    if args.mode in ("run", "both"):
+        modes.append("run_level")
+    if args.mode in ("participant", "both"):
+        modes.append("participant_level")
+
+    # Output directory
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = input_path.parent / f"agreement_{timestamp}"
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Computing Krippendorff's Alpha for {len(dimension_names)} dimensions...")
+    print(f"Modes: {modes}")
+    print()
+
+    all_results = {}
+
+    for mode in modes:
+        print(f"--- {mode.replace('_', ' ').title()} ---")
+
+        results = compute_agreement(
+            scores_df=scores_df,
+            dimensions=dimension_names,
+            mode=mode,
+            participant_col=args.participant_col,
+            entity_col=args.entity_col,
+            n_bootstrap=args.n_bootstrap,
+            confidence=args.confidence,
+        )
+
+        all_results[mode] = {dim: r.to_dict() for dim, r in results.items()}
+
+        # Print results
+        for dim, result in results.items():
+            print(
+                f"  {dim}: α = {result.alpha:.3f} "
+                f"[{result.ci_lower:.3f}, {result.ci_upper:.3f}] "
+                f"({result.interpretation}) "
+                f"[n_units={result.n_units}, n_raters={result.n_raters}]"
+            )
+        print()
+
+    # Save results
+    output_path = output_dir / "agreement_results.json"
+    with open(output_path, "w") as f:
+        json.dump(all_results, f, indent=2)
+
+    print(f"Results saved to: {output_path}")
+    return 0
+
+
+# =============================================================================
+# ENTITY CLUSTER COMMAND
+# =============================================================================
+
+
+def add_entity_cluster_args(parser: argparse.ArgumentParser) -> None:
+    """Add entity clustering and PCA arguments."""
+    parser.add_argument(
+        "input_csv",
+        help="Path to input CSV file with scored entities (from 'qa entity score').",
+    )
+    parser.add_argument(
+        "--method",
+        choices=["hierarchical", "kmeans", "hdbscan", "all"],
+        default="hierarchical",
+        help="Clustering method (default: hierarchical).",
+    )
+    parser.add_argument(
+        "--metric",
+        choices=["euclidean", "cosine", "aitchison"],
+        default="euclidean",
+        help="Distance metric for clustering (default: euclidean).",
+    )
+    parser.add_argument(
+        "--n-clusters",
+        type=int,
+        default=None,
+        help="Number of clusters (default: auto-select using silhouette scores).",
+    )
+    parser.add_argument(
+        "--dimensions",
+        default="social,ecological,technological",
+        help="Dimensions to use, comma-separated (default: social,ecological,technological).",
+    )
+    parser.add_argument(
+        "--participant-col",
+        default="text_id",
+        help="Column name for participant IDs (default: text_id).",
+    )
+    parser.add_argument(
+        "--entity-col",
+        default="entity",
+        help="Column name for entities (default: entity).",
+    )
+    parser.add_argument(
+        "--pca",
+        action="store_true",
+        help="Run PCA on participant score vectors.",
+    )
+    parser.add_argument(
+        "--pca-clr",
+        action="store_true",
+        help="Apply CLR transform before PCA (only for compositional data).",
+    )
+    parser.add_argument(
+        "--pca-n-components",
+        type=int,
+        default=None,
+        help="Number of PCA components to retain (default: all).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory (default: creates cluster_* subdirectory).",
+    )
+    parser.add_argument(
+        "--viz",
+        default="all",
+        help="Visualizations: 'all', 'dendrogram', 'elbow', 'scatter', 'biplot', 'scree', or comma-separated list (default: all).",
+    )
+    parser.add_argument(
+        "--groups",
+        default=None,
+        help="Known groups for visualization coloring: 'group1:pid1,pid2;group2:pid3,pid4'.",
+    )
+
+
+async def run_entity_cluster(args: argparse.Namespace) -> int:
+    """
+    Run participant clustering and/or PCA analysis.
+
+    Discovers natural groupings among participants based on their entity
+    scoring patterns.
+    """
+    import json
+    from datetime import datetime
+
+    from qualitative_analysis.entity.comparison import ParticipantComparison
+    from qualitative_analysis.entity.clustering import (
+        cluster_participants,
+        pca_on_scores,
+        plot_dendrogram,
+        plot_elbow,
+        plot_cluster_scatter,
+        plot_biplot,
+        plot_scree,
+    )
+
+    input_path = Path(args.input_csv)
+    if not input_path.exists():
+        print(f"Error: Input file not found: {input_path}")
+        return 1
+
+    # Parse dimensions
+    dimension_names = [d.strip() for d in args.dimensions.split(",")]
+
+    # Output directory
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = input_path.parent / f"cluster_{timestamp}"
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load scores via ParticipantComparison
+    comparison = ParticipantComparison()
+    comparison.load_scores(
+        str(input_path),
+        dimension_names,
+        participant_col=args.participant_col,
+        entity_col=args.entity_col,
+    )
+
+    print(f"Loaded {len(comparison.scores_by_participant)} participants")
+    print(f"Dimensions: {dimension_names}")
+    print()
+
+    # Parse known groups for visualization
+    groups = None
+    if args.groups:
+        groups = parse_inline_groups(args.groups)
+        print(f"Known groups: {list(groups.keys())}")
+
+    # Parse viz options
+    viz_opts = [v.strip().lower() for v in args.viz.split(",")]
+    if "all" in viz_opts:
+        viz_opts = ["dendrogram", "elbow", "scatter", "biplot", "scree"]
+
+    results = {}
+
+    # Clustering
+    methods = [args.method] if args.method != "all" else ["hierarchical", "kmeans"]
+    if args.method == "all":
+        try:
+            import hdbscan  # noqa: F401
+            methods.append("hdbscan")
+        except ImportError:
+            print("Note: hdbscan not installed, skipping HDBSCAN clustering")
+
+    for method in methods:
+        print(f"--- {method.upper()} Clustering ---")
+
+        try:
+            result = cluster_participants(
+                comparison,
+                method=method,
+                metric=args.metric,
+                n_clusters=args.n_clusters,
+            )
+
+            results[method] = result.to_dict()
+
+            print(f"  Clusters: {result.n_clusters}")
+            print(f"  Quality: {result.quality_metrics}")
+
+            # Get centroids for visualization
+            from qualitative_analysis.entity.clustering import _get_participant_centroids
+            centroids, _ = _get_participant_centroids(comparison)
+
+            # Generate visualizations
+            if method == "hierarchical" and "dendrogram" in viz_opts:
+                plot_dendrogram(result, output_dir / f"dendrogram_{method}.png")
+
+            if method == "kmeans" and "elbow" in viz_opts:
+                plot_elbow(result, output_dir / f"elbow_{method}.png")
+
+            if "scatter" in viz_opts:
+                plot_cluster_scatter(
+                    result,
+                    centroids,
+                    output_dir / f"scatter_{method}.png",
+                    dimension_names=dimension_names,
+                )
+
+            print()
+
+        except Exception as e:
+            print(f"  Error: {e}")
+            print()
+
+    # PCA
+    if args.pca:
+        print("--- PCA Analysis ---")
+
+        pca_result = pca_on_scores(
+            comparison,
+            n_components=args.pca_n_components,
+            use_clr=args.pca_clr,
+            standardize=True,
+        )
+
+        results["pca"] = pca_result.to_dict()
+
+        print(f"  Components: {len(pca_result.explained_variance_ratio)}")
+        print(f"  Cumulative variance: {pca_result.cumulative_variance[-1]*100:.1f}%")
+        for i, var in enumerate(pca_result.explained_variance_ratio):
+            print(f"    PC{i+1}: {var*100:.1f}%")
+
+        # Visualizations
+        if "biplot" in viz_opts:
+            plot_biplot(pca_result, output_dir / "pca_biplot.png", groups=groups)
+
+        if "scree" in viz_opts:
+            plot_scree(pca_result, output_dir / "pca_scree.png")
+
+        print()
+
+    # Save results
+    output_path = output_dir / "cluster_results.json"
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+
+    print(f"Results saved to: {output_dir}")
     return 0

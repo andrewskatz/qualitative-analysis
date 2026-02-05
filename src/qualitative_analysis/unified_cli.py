@@ -236,6 +236,10 @@ def _add_entity_commands(
         run_entity_report,
         add_entity_prepare_scoring_args,
         run_entity_prepare_scoring,
+        add_entity_agreement_args,
+        run_entity_agreement,
+        add_entity_cluster_args,
+        run_entity_cluster,
     )
 
     entity_parser = subparsers.add_parser(
@@ -315,6 +319,24 @@ def _add_entity_commands(
     )
     add_entity_prepare_scoring_args(prep_score_parser)
     prep_score_parser.set_defaults(func=lambda args: asyncio.run(run_entity_prepare_scoring(args)))
+
+    # agreement subcommand
+    agreement_parser = entity_subs.add_parser(
+        "agreement",
+        help="Compute inter-rater agreement (Krippendorff's Alpha)",
+        description="Measure agreement among LLM scoring runs (run-level) or among participants (participant-level) using Krippendorff's Alpha.",
+    )
+    add_entity_agreement_args(agreement_parser)
+    agreement_parser.set_defaults(func=lambda args: asyncio.run(run_entity_agreement(args)))
+
+    # cluster subcommand
+    cluster_parser = entity_subs.add_parser(
+        "cluster",
+        help="Cluster participants by scoring patterns",
+        description="Discover natural groupings among participants using hierarchical, k-means, or HDBSCAN clustering. Optionally run PCA for dimensionality reduction.",
+    )
+    add_entity_cluster_args(cluster_parser)
+    cluster_parser.set_defaults(func=lambda args: asyncio.run(run_entity_cluster(args)))
 
 
 def main() -> int:

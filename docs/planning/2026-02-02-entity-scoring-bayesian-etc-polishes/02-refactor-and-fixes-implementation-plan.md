@@ -321,10 +321,136 @@ All items from the original plan have been implemented and verified.
 
 ---
 
-## Proposed Next Steps
+## Option C Completion (2026-02-04)
 
-**Option A — Quick wins only:** Fix Tier 1 items (M3, M6, L1, L3, L4, L5). All are small, low-risk, and independently valuable. Leaves methodological items for a later session with more domain context.
+**Selected option:** C — Comprehensive (all Tier 1 + Tier 2). Implemented 2026-02-04.
 
-**Option B — Quick wins + methodology:** Fix Tier 1, then address M4 (shrinkage formula), M5 (HDI via ArviZ), and make priors configurable (H1+H2). More impactful but requires testing Bayesian output changes.
+### Tier 1 Fixes Completed
 
-**Option C — Comprehensive:** All of Tier 1 + Tier 2. Defers only Tier 3 (H3, H8, M7) which are genuinely larger structural changes.
+| Finding | File | Change |
+|---------|------|--------|
+| M3 | `comparison.py` | Warning on missing/unparseable dimension values in `load_scores()` |
+| M6 | `bayesian.py` | ESS threshold raised to 1000; added "marginal" tier (400–1000) with warning; `convergence_status` field |
+| L1 | `__init__.py` | 5 Bayesian symbols conditionally added to `__all__` |
+| L3 | `models.py` | `statistics.multimode()` + median of modes (replaces arbitrary `scores[0]`) |
+| L4 | `bayesian.py` | Warning when any group has < 2 participants |
+| L5 | `models.py` | Warning on missing dimension in `get_scores_as_tuple()` |
+
+### Tier 2 Fixes Completed
+
+| Finding | File | Change |
+|---------|------|--------|
+| H1+H2 | `bayesian.py` | `prior_config` dict on constructor (6 keys: `mu_pop_sigma`, `sigma_entity_sigma`, `sigma_group_sigma`, `sigma_participant_sigma`, `kappa_alpha`, `kappa_beta`). Unknown keys warned and ignored. `build_model()` reads from `self.prior_config`. |
+| M4 | `bayesian.py` | Standard shrinkage: `(raw - posterior) / (raw - grand_mean) * 100`, using posterior `mu_pop` as grand mean |
+| M5 | `bayesian.py` | `az.hdi(delta, hdi_prob=0.94)` in both `compute_group_contrasts()` and `compute_icc()` |
+| M8 | `bayesian.py` | Inverse S&V transform in PPC: `(y * N * 100 - 0.5) / (N - 1)` |
+
+### Final Audit Ledger
+
+**21 of 24 findings fixed.** Remaining 3 are Tier 3 (deferred by design):
+- H3: ICC pi²/(3κ) approximation at extremes
+- H8: Dual data loading paths
+- M7: SingleRunScore metadata lost during save
+
+**Tests:** 80/80 pass.
+**Progress note:** `docs/progress-notes/2026-02-04-audit-option-c-tier1-tier2-fixes.md`
+
+---
+
+## Phase 4: Statistical Methods Expansion
+
+**Date planned:** 2026-02-04
+**Source:** Remaining work tracker (`00-remaining-work.md`, §5 — Statistical Methods Not Yet Implemented)
+**Goal:** Implement five additional statistical methods that complete the original comparison plan's statistical catalog.
+
+### Step 4A: Krippendorff's Alpha (Multi-Rater Agreement)
+
+**Priority:** Medium
+**Source:** Comparison plan §3.2
+**Purpose:** Quantifies agreement among multiple raters (LLM scoring runs or participants) on ordinal/interval data. Unlike Cohen's kappa (2 raters only), Krippendorff's alpha handles arbitrary numbers of raters and missing data.
+
+**Design:**
+- Add `compute_krippendorff_alpha()` to a new file `src/qualitative_analysis/entity/agreement.py`
+- Input: scored DataFrame + dimension name + unit config (per-entity or per-participant)
+- Output: alpha value, bootstrap 95% CI, interpretation label (poor/fair/moderate/good/excellent)
+- Support both run-level agreement (are 3 LLM runs consistent?) and participant-level agreement (do participants agree on entity scores?)
+- Use MASI or interval distance metric depending on score type
+
+**Effort:** Medium. Core algorithm is ~80 lines. Bootstrap CI adds ~30 lines.
+
+### Step 4B: LOO-CV Model Comparison
+
+**Priority:** Low
+**Source:** Model Spec §6.2
+**Purpose:** Use leave-one-out cross-validation (`az.loo()`) to compare alternative Bayesian model specifications. Enables principled model selection (e.g., does adding group effects improve fit?).
+
+**Design:**
+- Add `compare_models()` method to `BayesianEntityModel`
+- Fits a reduced model (no group effect) alongside the full model
+- Returns `az.compare()` table with ELPD, SE, weights
+- Requires computing `log_likelihood` in the PyMC model (add `pm.compute_log_likelihood()` call after sampling)
+
+**Effort:** Medium. Needs `log_likelihood` added to model spec + wrapper around ArviZ comparison.
+
+### Step 4C: Participant Clustering
+
+**Priority:** Low
+**Source:** Comparison plan §5.1
+**Purpose:** Discover natural participant groupings from scoring patterns, without pre-specified group labels. Useful for exploratory analysis.
+
+**Design:**
+- Add `src/qualitative_analysis/entity/clustering.py`
+- Implement:
+  1. **Hierarchical clustering** (scipy.cluster.hierarchy) with dendrogram visualization
+  2. **k-means** (sklearn) with elbow/silhouette analysis for optimal k
+  3. **HDBSCAN** (hdbscan) for density-based clustering with noise detection
+- Input: participant score matrix (from `ParticipantComparison.compute_distances()`)
+- Output: cluster labels, silhouette scores, dendrogram/scatter plots
+- GMM (soft assignments) as optional extension
+
+**Effort:** Medium-large. Multiple algorithms, each with visualization. sklearn/hdbscan are optional deps.
+
+### Step 4D: Bayes Factor
+
+**Priority:** Low
+**Source:** Comparison plan §4.3
+**Purpose:** Evidence ratio for "groups differ" vs "no difference." Complements posterior p(direction) with a measure of evidence strength.
+
+**Design:**
+- Add `compute_bayes_factor()` method to `BayesianEntityModel`
+- Savage-Dickey density ratio: evaluate posterior and prior density of group contrast at zero
+- Output: BF₁₀, interpretation (anecdotal/moderate/strong/decisive per Jeffreys scale)
+- Alternative: bridge sampling via `az.bridgesampling` if available
+
+**Effort:** Medium. Savage-Dickey is straightforward with KDE on posterior samples.
+
+### Step 4E: PCA on CLR Scores
+
+**Priority:** Low
+**Source:** Comparison plan §5.3
+**Purpose:** 2D participant map showing linear relationships between scoring patterns. Reduces dimensionality for visualization when there are many dimensions.
+
+**Design:**
+- Add to `clustering.py` or a new `dimensionality.py`
+- Apply CLR transform to participant mean score vectors, then PCA
+- Output: explained variance ratios, biplot with participant labels colored by group, loading vectors
+- Use sklearn PCA
+
+**Effort:** Small-medium. ~50 lines for PCA + ~80 lines for biplot visualization.
+
+### Execution Order
+
+| Step | Task | Depends on | Effort |
+|------|------|-----------|--------|
+| 4A | Krippendorff's Alpha | — | Medium |
+| 4B | LOO-CV model comparison | Bayesian model fitted | Medium |
+| 4C | Participant clustering | Distance matrix computed | Medium-large |
+| 4D | Bayes Factor | Bayesian model fitted | Medium |
+| 4E | PCA on CLR scores | — | Small-medium |
+
+### Success Criteria
+
+- Each method has at least basic unit tests
+- Methods integrate with existing CLI where appropriate
+- Documentation strings follow existing conventions
+- All existing tests continue to pass

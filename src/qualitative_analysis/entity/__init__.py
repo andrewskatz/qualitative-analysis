@@ -54,6 +54,29 @@ from qualitative_analysis.entity.comparison import (
 )
 from qualitative_analysis.entity.comparison_viz import ComparisonVisualizer
 
+# Agreement analysis (Krippendorff's Alpha)
+from qualitative_analysis.entity.agreement import (
+    AgreementResult,
+    compute_agreement,
+    krippendorff_alpha,
+)
+
+# Clustering and PCA
+from qualitative_analysis.entity.clustering import (
+    ClusteringResult,
+    PCAResult,
+    cluster_participants,
+    cluster_hierarchical,
+    cluster_kmeans,
+    pca_on_scores,
+)
+
+# HDBSCAN (optional — requires hdbscan package)
+try:
+    from qualitative_analysis.entity.clustering import cluster_hdbscan
+except ImportError:
+    pass
+
 # Bayesian modeling (optional — requires pymc, arviz, nutpie)
 try:
     from qualitative_analysis.entity.bayesian import (
@@ -97,7 +120,26 @@ __all__ = [
     "compare_participants",
     "clr_transform",
     "ilr_transform",
+    # Agreement
+    "AgreementResult",
+    "compute_agreement",
+    "krippendorff_alpha",
+    # Clustering
+    "ClusteringResult",
+    "PCAResult",
+    "cluster_participants",
+    "cluster_hierarchical",
+    "cluster_kmeans",
+    "pca_on_scores",
 ]
+
+# Conditionally add HDBSCAN if available
+try:
+    from qualitative_analysis.entity.clustering import cluster_hdbscan as _  # noqa: F401
+    __all__.append("cluster_hdbscan")
+    del _
+except ImportError:
+    pass
 
 # Conditionally add Bayesian symbols if pymc is available
 try:

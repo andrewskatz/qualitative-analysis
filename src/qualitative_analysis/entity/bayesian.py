@@ -290,6 +290,7 @@ class BayesianEntityModel:
 
         # Store results per dimension
         self.results: Dict[str, BayesianModelResult] = {}
+        self.reduced_results: Dict[str, BayesianModelResult] = {}  # For LOO-CV
 
         logger.info(
             f"BayesianEntityModel initialized: "
@@ -979,6 +980,414 @@ class BayesianEntityModel:
                 warnings.simplefilter("ignore", FutureWarning)
                 ppc = pm.sample_posterior_predictive(trace)
         return ppc
+
+    # ------------------------------------------------------------------
+    # LOO-CV Model Comparison
+    # ------------------------------------------------------------------
+
+    def build_reduced_model(self, dimension: str) -> Any:
+        """
+        Build a reduced model WITHOUT group effects for model comparison.
+
+        The reduced model removes sigma_group and group_effect parameters,
+        so the linear predictor becomes:
+            eta_ep = theta[entity] + z_participant * sigma_participant
+
+        This is the null model for testing whether group effects are needed.
+
+        Args:
+            dimension: Dimension to build the model for.
+
+        Returns:
+            PyMC Model object (reduced, no group effects).
+        """
+        import pymc as pm
+
+        dim_df = self.data["long_df"][
+            self.data["long_df"]["dimension"] == dimension
+        ].copy()
+
+        if len(dim_df) == 0:
+            raise ValueError(f"No observations found for dimension '{dimension}'")
+
+        n_entities = self.data["n_entities"]
+
+        # Extract observation-level index arrays
+        entity_idx = dim_df["entity_idx"].values
+        participant_idx = dim_df["participant_idx"].values
+        y_obs = dim_df["y"].values
+
+        # Entity-participant pairs
+        ep_pairs = dim_df[["entity_idx", "participant_idx"]].drop_duplicates()
+        ep_pairs = ep_pairs.sort_values(["entity_idx", "participant_idx"]).reset_index(drop=True)
+        ep_map = {
+            (row["entity_idx"], row["participant_idx"]): i
+            for i, row in ep_pairs.iterrows()
+        }
+        n_ep = len(ep_pairs)
+        ep_entity = ep_pairs["entity_idx"].values.astype(int)
+
+        obs_ep_idx = np.array([
+            ep_map[(e, p)] for e, p in zip(entity_idx, participant_idx)
+        ])
+
+        coords = {
+            "entity": list(map(str, self.data["entity_names"])),
+            "ep_pair": list(range(n_ep)),
+            "obs": list(range(len(y_obs))),
+        }
+
+        pc = self.prior_config
+
+        with pm.Model(coords=coords) as model:
+            # --- Population-level ---
+            mu_pop = pm.Normal("mu_pop", mu=0, sigma=pc["mu_pop_sigma"])
+
+            # --- Entity-level (non-centered) ---
+            sigma_entity = pm.HalfNormal("sigma_entity", sigma=pc["sigma_entity_sigma"])
+            z_entity = pm.Normal("z_entity", mu=0, sigma=1, dims="entity")
+            theta = pm.Deterministic(
+                "theta", mu_pop + z_entity * sigma_entity, dims="entity"
+            )
+
+            # --- NO GROUP EFFECTS in reduced model ---
+
+            # --- Participant-level (non-centered) ---
+            sigma_participant = pm.HalfNormal("sigma_participant", sigma=pc["sigma_participant_sigma"])
+            z_participant = pm.Normal(
+                "z_participant", mu=0, sigma=1, dims="ep_pair"
+            )
+
+            # --- Linear predictor for each (entity, participant) pair ---
+            # WITHOUT group effect
+            eta_ep = theta[ep_entity] + z_participant * sigma_participant
+            mu_ep = pm.math.invlogit(eta_ep)
+
+            # Map to observation level
+            mu_obs = mu_ep[obs_ep_idx]
+
+            # --- Run-level precision ---
+            kappa = pm.Gamma("kappa", alpha=pc["kappa_alpha"], beta=pc["kappa_beta"])
+
+            # --- Likelihood ---
+            alpha_param = mu_obs * kappa
+            beta_param = (1 - mu_obs) * kappa
+
+            pm.Beta("y", alpha=alpha_param, beta=beta_param, observed=y_obs, dims="obs")
+
+        return model
+
+    def fit_reduced(
+        self,
+        dimension: str,
+        chains: int = 4,
+        draws: int = 1000,
+        tune: int = 1000,
+        sampler: str = "nutpie",
+        random_seed: int = 42,
+        **kwargs,
+    ) -> "BayesianModelResult":
+        """
+        Fit the reduced (no group effects) model for a dimension.
+
+        This is used for LOO-CV model comparison against the full model.
+
+        Args:
+            dimension: Dimension to fit.
+            chains: Number of MCMC chains.
+            draws: Number of posterior draws per chain.
+            tune: Number of tuning steps.
+            sampler: "nutpie" or "nuts".
+            random_seed: Random seed.
+            **kwargs: Additional sampler arguments.
+
+        Returns:
+            BayesianModelResult for the reduced model.
+        """
+        import pymc as pm
+
+        logger.info(f"Fitting reduced model (no group effects) for dimension: {dimension}")
+
+        model = self.build_reduced_model(dimension)
+
+        with model:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+
+                if sampler == "nutpie":
+                    try:
+                        trace = pm.sample(
+                            draws=draws,
+                            tune=tune,
+                            chains=chains,
+                            nuts_sampler="nutpie",
+                            random_seed=random_seed,
+                            **kwargs,
+                        )
+                    except Exception as e:
+                        logger.warning(f"nutpie failed: {e}. Falling back to PyMC NUTS.")
+                        trace = pm.sample(
+                            draws=draws,
+                            tune=tune,
+                            chains=chains,
+                            random_seed=random_seed,
+                            **kwargs,
+                        )
+                else:
+                    trace = pm.sample(
+                        draws=draws,
+                        tune=tune,
+                        chains=chains,
+                        random_seed=random_seed,
+                        **kwargs,
+                    )
+
+        # Run diagnostics (simplified for reduced model)
+        diag = self._run_diagnostics(trace, dimension)
+
+        result = BayesianModelResult(
+            dimension=dimension,
+            trace=trace,
+            diagnostics=diag,
+            converged=diag["converged"],
+        )
+
+        self.reduced_results[dimension] = result
+        return result
+
+    def compare_models(
+        self,
+        dimension: str,
+        **fit_kwargs,
+    ) -> Dict[str, Any]:
+        """
+        LOO-CV comparison between full and reduced (no group effects) models.
+
+        Uses Leave-One-Out Cross-Validation via ArviZ to compare model fit.
+        A positive ELPD difference favoring the full model suggests that
+        group effects improve predictive accuracy.
+
+        Args:
+            dimension: Dimension to compare (must be fitted).
+            **fit_kwargs: Arguments passed to fit_reduced if not already fitted.
+
+        Returns:
+            Dict with comparison results including ELPD difference, SE,
+            preferred model, and interpretation.
+        """
+        import arviz as az
+        import pymc as pm
+
+        if dimension not in self.results:
+            raise ValueError(f"Dimension '{dimension}' not yet fitted. Call fit() first.")
+
+        # Ensure reduced model is fitted
+        if dimension not in self.reduced_results:
+            logger.info(f"Reduced model not fitted. Fitting now...")
+            self.fit_reduced(dimension, **fit_kwargs)
+
+        # Compute log-likelihood for full model
+        full_trace = self.results[dimension].trace
+        if not hasattr(full_trace, "log_likelihood") or full_trace.log_likelihood is None:
+            logger.info("Computing log-likelihood for full model...")
+            full_model = self.build_model(dimension)
+            with full_model:
+                pm.compute_log_likelihood(full_trace)
+
+        # Compute log-likelihood for reduced model
+        reduced_trace = self.reduced_results[dimension].trace
+        if not hasattr(reduced_trace, "log_likelihood") or reduced_trace.log_likelihood is None:
+            logger.info("Computing log-likelihood for reduced model...")
+            reduced_model = self.build_reduced_model(dimension)
+            with reduced_model:
+                pm.compute_log_likelihood(reduced_trace)
+
+        # Compute LOO for both
+        loo_full = az.loo(full_trace, pointwise=True)
+        loo_reduced = az.loo(reduced_trace, pointwise=True)
+
+        # Compare
+        comparison = az.compare(
+            {"full": full_trace, "reduced": reduced_trace},
+            ic="loo",
+        )
+
+        # Extract results
+        elpd_full = float(loo_full.elpd_loo)
+        elpd_reduced = float(loo_reduced.elpd_loo)
+        elpd_diff = elpd_full - elpd_reduced
+        se_diff = float(np.sqrt(loo_full.se**2 + loo_reduced.se**2))
+
+        # Determine preferred model
+        # Positive diff means full model is better
+        if elpd_diff > 2 * se_diff:
+            preferred = "full"
+            interpretation = "Strong evidence for group effects (full model preferred)"
+        elif elpd_diff > se_diff:
+            preferred = "full"
+            interpretation = "Moderate evidence for group effects"
+        elif elpd_diff < -2 * se_diff:
+            preferred = "reduced"
+            interpretation = "Strong evidence against group effects (reduced model preferred)"
+        elif elpd_diff < -se_diff:
+            preferred = "reduced"
+            interpretation = "Moderate evidence against group effects"
+        else:
+            preferred = "inconclusive"
+            interpretation = "Models are similar; insufficient evidence to prefer either"
+
+        result = {
+            "dimension": dimension,
+            "elpd_full": round(elpd_full, 2),
+            "elpd_reduced": round(elpd_reduced, 2),
+            "elpd_diff": round(elpd_diff, 2),
+            "se_diff": round(se_diff, 2),
+            "preferred_model": preferred,
+            "interpretation": interpretation,
+            "comparison_table": comparison.to_dict(),
+        }
+
+        logger.info(
+            f"LOO-CV [{dimension}]: ELPD diff = {elpd_diff:.2f} ± {se_diff:.2f} "
+            f"-> {preferred} ({interpretation})"
+        )
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Bayes Factor
+    # ------------------------------------------------------------------
+
+    def compute_bayes_factor(
+        self,
+        dimension: str,
+        n_prior_samples: int = 10000,
+        random_seed: int = 42,
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Compute Savage-Dickey Bayes Factor for group effect = 0.
+
+        For each pair of groups, computes BF10 (evidence for H1: groups differ
+        vs H0: groups are identical) using the Savage-Dickey density ratio.
+
+        The BF is computed as:
+            BF10 = prior_density_at_0 / posterior_density_at_0
+
+        A BF10 > 1 supports H1 (groups differ); BF10 < 1 supports H0.
+
+        Args:
+            dimension: Dimension to analyze (must be fitted).
+            n_prior_samples: Number of prior samples for density estimation.
+            random_seed: Random seed for prior sampling.
+
+        Returns:
+            Dict with per-group-pair Bayes Factor results.
+        """
+        from scipy.stats import gaussian_kde, norm
+
+        if dimension not in self.results:
+            raise ValueError(f"Dimension '{dimension}' not yet fitted")
+
+        result = self.results[dimension]
+        post = result.trace.posterior
+
+        group_names = self.data["group_names"]
+        n_groups = len(group_names)
+        pc = self.prior_config
+
+        rng = np.random.default_rng(random_seed)
+
+        bf_results = {}
+
+        for i in range(n_groups):
+            for j in range(i + 1, n_groups):
+                g_a = group_names[i]
+                g_b = group_names[j]
+
+                # Posterior contrast samples
+                eff_a = post["group_effect"].values[:, :, i].flatten()
+                eff_b = post["group_effect"].values[:, :, j].flatten()
+                posterior_contrast = eff_a - eff_b  # On logit scale
+
+                # Posterior density at 0
+                try:
+                    kde = gaussian_kde(posterior_contrast)
+                    posterior_at_0 = float(kde.evaluate([0.0])[0])
+                except Exception as e:
+                    logger.warning(f"KDE failed for {g_a} vs {g_b}: {e}")
+                    posterior_at_0 = np.nan
+
+                # Prior density at 0
+                # group_effect ~ Normal(0, sigma_group)
+                # sigma_group ~ HalfNormal(sigma_group_sigma)
+                # Difference of two such effects: N(0, sqrt(2)*sigma_group)
+                # Prior density at 0 is the expectation of N(0, sqrt(2)*sigma).pdf(0)
+                # over the prior on sigma_group
+                sigma_group_samples = np.abs(
+                    rng.normal(0, pc["sigma_group_sigma"], n_prior_samples)
+                )
+                # Density of N(0, sqrt(2)*sigma) at x=0 is 1 / (sqrt(2*pi) * sqrt(2) * sigma)
+                prior_densities_at_0 = 1 / (np.sqrt(2 * np.pi) * np.sqrt(2) * sigma_group_samples)
+                prior_at_0 = float(np.mean(prior_densities_at_0))
+
+                # Bayes Factor
+                if np.isnan(posterior_at_0) or posterior_at_0 == 0:
+                    bf10 = np.nan
+                    log10_bf = np.nan
+                else:
+                    bf10 = prior_at_0 / posterior_at_0
+                    log10_bf = np.log10(bf10) if bf10 > 0 else np.nan
+
+                interpretation = self._interpret_bayes_factor(bf10)
+
+                pair_key = f"{g_a}_vs_{g_b}"
+                bf_results[pair_key] = {
+                    "group_a": g_a,
+                    "group_b": g_b,
+                    "bf10": round(bf10, 3) if not np.isnan(bf10) else None,
+                    "log10_bf": round(log10_bf, 3) if not np.isnan(log10_bf) else None,
+                    "prior_density_at_0": round(prior_at_0, 6),
+                    "posterior_density_at_0": round(posterior_at_0, 6) if not np.isnan(posterior_at_0) else None,
+                    "interpretation": interpretation,
+                }
+
+                logger.info(
+                    f"Bayes Factor [{dimension}] {pair_key}: "
+                    f"BF10 = {bf10:.2f} ({interpretation})"
+                )
+
+        return {dimension: bf_results}
+
+    @staticmethod
+    def _interpret_bayes_factor(bf10: float) -> str:
+        """
+        Interpret Bayes Factor using Jeffreys (1961) scale.
+
+        BF10 > 1 supports H1 (groups differ)
+        BF10 < 1 supports H0 (no difference)
+        """
+        if np.isnan(bf10):
+            return "undefined"
+        elif bf10 >= 100:
+            return "extreme evidence for H1 (groups differ)"
+        elif bf10 >= 30:
+            return "very strong evidence for H1"
+        elif bf10 >= 10:
+            return "strong evidence for H1"
+        elif bf10 >= 3:
+            return "moderate evidence for H1"
+        elif bf10 >= 1:
+            return "anecdotal evidence for H1"
+        elif bf10 >= 1/3:
+            return "anecdotal evidence for H0 (no difference)"
+        elif bf10 >= 1/10:
+            return "moderate evidence for H0"
+        elif bf10 >= 1/30:
+            return "strong evidence for H0"
+        elif bf10 >= 1/100:
+            return "very strong evidence for H0"
+        else:
+            return "extreme evidence for H0"
 
     # ------------------------------------------------------------------
     # Output / serialization
