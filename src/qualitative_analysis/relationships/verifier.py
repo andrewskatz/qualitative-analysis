@@ -409,6 +409,12 @@ Return JSON with "verifications": [{{"original_index": i, "is_supported": bool, 
         results = []
         verification_map = {v["original_index"]: v for v in verifications}
 
+        if len(verification_map) < len(relationships):
+            logger.warning(
+                f"LLM returned verifications for {len(verification_map)}/{len(relationships)} "
+                f"relationships — missing ones will be marked unverified"
+            )
+
         for i, rel in enumerate(relationships):
             ver = verification_map.get(i, {})
             is_supported = ver.get("is_supported", False)
@@ -417,6 +423,8 @@ Return JSON with "verifications": [{{"original_index": i, "is_supported": bool, 
             evidence = ver.get("evidence")
 
             note = ""
+            if i not in verification_map:
+                note = "Not evaluated — missing from LLM verification response"
             if correction:
                 note = f"Correction: {correction}"
             if evidence:

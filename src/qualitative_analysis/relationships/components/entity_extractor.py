@@ -21,7 +21,7 @@ class EntityResponse(BaseModel):
 
 
 class EntityExtractor:
-    def __init__(self, llm: BaseLLMProvider, prompt_version: int = 3):
+    def __init__(self, llm: BaseLLMProvider, prompt_version: int = 1):
         self.llm = llm
         self.system_prompt = load_prompt("system_prompt", version=1)
         self.prompt_template = load_prompt("entity_extraction", version=prompt_version)

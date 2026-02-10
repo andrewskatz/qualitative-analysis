@@ -18,8 +18,10 @@ from typing import Dict, Any, List, Optional, Union
 from ..core.embeddings import EmbeddingService, get_embedding_service
 from .models import (
     Relationship,
-    EntityCluster,
     NormalizedRelationship,
+    CausalRelationship,
+    CausalAttributes,
+    EntityCluster,
     NormalizationResult,
 )
 
@@ -81,7 +83,7 @@ class RelationshipNormalizer:
 
     def normalize(
         self,
-        relationships: List[Relationship],
+        relationships: Union[List[Relationship], List[CausalRelationship], List],
         entity_threshold: Union[float, str] = "moderate",
         type_threshold: Union[float, str] = "moderate",
         canonical_method: str = "shortest",
@@ -92,8 +94,13 @@ class RelationshipNormalizer:
         """
         Normalize relationships by clustering entities and types.
 
+        Accepts raw Relationship, CausalRelationship, or any object with
+        source, target, and type attributes. When CausalRelationship objects
+        are provided, causal attributes are preserved through the merge step
+        using majority vote resolution.
+
         Args:
-            relationships: List of Relationship objects to normalize.
+            relationships: List of relationship objects to normalize.
             entity_threshold: Similarity threshold for entity clustering.
                             Can be float (0.0-1.0) or preset name.
             type_threshold: Similarity threshold for type clustering.
@@ -182,9 +189,14 @@ class RelationshipNormalizer:
         entity_mapping = self._build_mapping(entity_clusters)
         type_mapping = self._build_mapping(type_clusters)
 
+        # Build similarity lookup for confidence computation
+        cluster_similarity = self._build_cluster_similarity_lookup(
+            entity_clusters, type_clusters
+        )
+
         # Apply normalization and merge relationships
         normalized_relationships = self._apply_normalization_and_merge(
-            relationships, entity_mapping, type_mapping
+            relationships, entity_mapping, type_mapping, cluster_similarity
         )
 
         # Build config
@@ -230,7 +242,7 @@ class RelationshipNormalizer:
 
     def _count_entities_and_types(
         self,
-        relationships: List[Relationship],
+        relationships: List,
     ) -> tuple[Dict[str, int], Dict[str, int]]:
         """Count occurrences of entities and relationship types."""
         entity_counts: Dict[str, int] = defaultdict(int)
@@ -391,6 +403,21 @@ Respond with ONLY the JSON object."""
             logger.warning(f"LLM canonical generation failed: {e}")
             return None
 
+    def _build_cluster_similarity_lookup(
+        self,
+        entity_clusters: List[EntityCluster],
+        type_clusters: List[EntityCluster],
+    ) -> Dict[str, float]:
+        """Build lookup from item → cluster avg_similarity for confidence computation."""
+        lookup = {}
+        for cluster in entity_clusters:
+            for member in cluster.members:
+                lookup[member] = cluster.avg_similarity
+        for cluster in type_clusters:
+            for member in cluster.members:
+                lookup[member] = cluster.avg_similarity
+        return lookup
+
     def _build_mapping(self, clusters: List[EntityCluster]) -> Dict[str, str]:
         """Build mapping from original items to canonical labels."""
         mapping = {}
@@ -401,13 +428,19 @@ Respond with ONLY the JSON object."""
 
     def _apply_normalization_and_merge(
         self,
-        relationships: List[Relationship],
+        relationships: List,
         entity_mapping: Dict[str, str],
         type_mapping: Dict[str, str],
+        cluster_similarity: Optional[Dict[str, float]] = None,
     ) -> List[NormalizedRelationship]:
-        """Apply normalization mappings and merge duplicate relationships."""
+        """Apply normalization mappings and merge duplicate relationships.
+
+        Handles raw Relationship, CausalRelationship, or any object with
+        source/target/type attributes. Causal attributes from CausalRelationship
+        objects are preserved through majority-vote resolution during merge.
+        """
         # Group relationships by normalized (source, type, target) tuple
-        grouped: Dict[tuple, List[Relationship]] = defaultdict(list)
+        grouped: Dict[tuple, List] = defaultdict(list)
 
         for rel in relationships:
             norm_source = entity_mapping.get(rel.source, rel.source)
@@ -435,18 +468,44 @@ Respond with ONLY the JSON object."""
             original_types = set()
 
             for rel in rels:
-                if rel.description and rel.description not in descriptions:
-                    descriptions.append(rel.description)
-                if rel.window_index not in window_indices:
-                    window_indices.append(rel.window_index)
-                if rel.text_id and rel.text_id not in text_ids:
-                    text_ids.append(rel.text_id)
+                desc = getattr(rel, "description", "")
+                if desc and desc not in descriptions:
+                    descriptions.append(desc)
+
+                # Handle both single window_index and list of window_indices
+                if hasattr(rel, "window_indices") and rel.window_indices:
+                    for wi in rel.window_indices:
+                        if wi not in window_indices:
+                            window_indices.append(wi)
+                elif hasattr(rel, "window_index"):
+                    if rel.window_index not in window_indices:
+                        window_indices.append(rel.window_index)
+
+                # Handle both text_id (single) and text_ids (list)
+                if hasattr(rel, "text_ids") and rel.text_ids:
+                    for tid in rel.text_ids:
+                        if tid and tid not in text_ids:
+                            text_ids.append(tid)
+                elif hasattr(rel, "text_id") and rel.text_id:
+                    if rel.text_id not in text_ids:
+                        text_ids.append(rel.text_id)
+
                 original_sources.add(rel.source)
                 original_targets.add(rel.target)
                 original_types.add(rel.type)
 
             # Merge description (first one as primary, or combine)
             merged_description = descriptions[0] if descriptions else ""
+
+            # Compute confidence from cluster similarities
+            # confidence = min of source, target, and type cluster similarities
+            if cluster_similarity:
+                source_sim = cluster_similarity.get(first.source, 1.0)
+                target_sim = cluster_similarity.get(first.target, 1.0)
+                type_sim = cluster_similarity.get(first.type, 1.0)
+                confidence = round(min(source_sim, target_sim, type_sim), 3)
+            else:
+                confidence = 1.0
 
             normalized.append(NormalizedRelationship(
                 source=norm_source,
@@ -457,7 +516,7 @@ Respond with ONLY the JSON object."""
                 original_type="; ".join(sorted(original_types)),
                 description=merged_description,
                 descriptions=descriptions,
-                confidence=1.0,  # Could compute based on cluster similarity
+                confidence=confidence,
                 count=len(rels),
                 window_indices=sorted(window_indices),
                 text_ids=sorted(text_ids),

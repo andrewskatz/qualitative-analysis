@@ -282,12 +282,16 @@ class EntityScore:
     runs: List[SingleRunScore] = field(default_factory=list)
     num_runs: int = 1
     processing_time_ms: float = 0.0
+    window_index: Optional[int] = None
+    group: Optional[str] = None
 
     def to_dict(self, include_runs: bool = False) -> Dict[str, Any]:
         result = {
             "entity": self.entity,
             "text_id": self.text_id,
             "context": self.context,
+            "window_index": self.window_index,
+            "group": self.group,
             "num_runs": self.num_runs,
             "processing_time_ms": self.processing_time_ms,
         }

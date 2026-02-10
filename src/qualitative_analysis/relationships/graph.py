@@ -189,6 +189,7 @@ class RelationshipGraph:
                     "evidence": [],
                     "text_ids": set(),
                     "causal_attributes": None,
+                    "_causal_votes": [],  # accumulate for majority vote
                 }
             edges_data[edge_key]["weight"] += count
             edges_data[edge_key]["text_ids"].update(text_ids)
@@ -199,16 +200,27 @@ class RelationshipGraph:
                         if len(edges_data[edge_key]["evidence"]) >= 5:
                             break
 
-            # Add causal attributes if available
+            # Accumulate causal attributes for majority vote resolution
             if is_causal and include_causal:
                 causal = getattr(rel, "causal", None)
                 if causal and causal.is_causal:
-                    edges_data[edge_key]["causal_attributes"] = {
-                        "is_causal": causal.is_causal,
+                    edges_data[edge_key]["_causal_votes"].append({
                         "polarity": causal.polarity,
                         "certainty": causal.certainty,
                         "explicit_vs_implicit": causal.explicit_vs_implicit,
-                    }
+                    })
+
+        # Resolve causal attributes via majority vote
+        for edge_key, data in edges_data.items():
+            votes = data.pop("_causal_votes", [])
+            if votes:
+                from collections import Counter
+                data["causal_attributes"] = {
+                    "is_causal": True,
+                    "polarity": Counter(v["polarity"] for v in votes).most_common(1)[0][0],
+                    "certainty": Counter(v["certainty"] for v in votes).most_common(1)[0][0],
+                    "explicit_vs_implicit": Counter(v["explicit_vs_implicit"] for v in votes).most_common(1)[0][0],
+                }
 
         # Build NetworkX graph for metrics
         G = nx.DiGraph()
@@ -1485,6 +1497,8 @@ Respond with ONLY the JSON, nothing else."""
                 if edge.causal_attributes:
                     G[edge.source][edge.target]["is_causal"] = edge.causal_attributes.get("is_causal", False)
                     G[edge.source][edge.target]["polarity"] = edge.causal_attributes.get("polarity", "")
+                    G[edge.source][edge.target]["certainty"] = edge.causal_attributes.get("certainty", "")
+                    G[edge.source][edge.target]["explicit_vs_implicit"] = edge.causal_attributes.get("explicit_vs_implicit", "")
 
         nx.write_gexf(G, path)
         logger.info(f"Saved graph GEXF to {path}")

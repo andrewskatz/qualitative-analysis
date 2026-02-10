@@ -233,6 +233,7 @@ class ParticipantComparison:
 
     def __init__(self):
         self.scores_by_participant: Dict[str, np.ndarray] = {}
+        self.entity_names_by_participant: Dict[str, List[str]] = {}
         self.dimension_names: List[str] = []
         self.entity_names: List[str] = []
 
@@ -278,6 +279,7 @@ class ParticipantComparison:
 
         # Group by participant
         participant_scores: Dict[str, List[np.ndarray]] = {}
+        participant_entity_names: Dict[str, List[str]] = {}
         entity_set = set()
 
         for row in rows:
@@ -311,11 +313,14 @@ class ParticipantComparison:
 
             if participant not in participant_scores:
                 participant_scores[participant] = []
+                participant_entity_names[participant] = []
             participant_scores[participant].append(np.array(score_vector))
+            participant_entity_names[participant].append(entity)
 
         # Convert to arrays
         for participant, scores_list in participant_scores.items():
             self.scores_by_participant[participant] = np.array(scores_list)
+            self.entity_names_by_participant[participant] = participant_entity_names[participant]
 
         self.entity_names = sorted(entity_set)
 

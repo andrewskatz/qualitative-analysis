@@ -111,6 +111,12 @@ def add_entity_score_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Print LLM prompts and responses to terminal for monitoring.",
     )
+    parser.add_argument(
+        "--checkpoint",
+        action="store_true",
+        default=False,
+        help="Enable checkpointing: save progress after each entity and resume from checkpoint on restart.",
+    )
 
 
 async def run_entity_score(args: argparse.Namespace) -> int:
@@ -188,37 +194,90 @@ async def run_entity_score(args: argparse.Namespace) -> int:
         print("No entities found in input CSV.")
         return 1
 
-    print(f"Loaded {len(entities)} entities")
+    total_entities = len(entities)
+    print(f"Loaded {total_entities} entities")
 
-    # Initialize LLM provider
-    if args.provider == "ollama":
-        llm_provider = OllamaProvider(
-            model_name=args.model,
-            base_url=args.base_url,
+    # Checkpoint setup
+    from qualitative_analysis.entity.models import EntityScoreResult
+    use_checkpoint = getattr(args, 'checkpoint', False)
+    output_prefix = input_path.stem
+    checkpoint_path = output_dir / f"{output_prefix}_checkpoint.jsonl"
+    checkpoint_scores = []
+
+    if use_checkpoint and checkpoint_path.exists():
+        checkpoint_scores, scored_keys = _load_checkpoint(checkpoint_path, dimensions)
+        if scored_keys:
+            print(f"\nResuming from checkpoint: {len(scored_keys)} entities already scored")
+            entities = [e for e in entities if _entity_checkpoint_key(e) not in scored_keys]
+            skipped = total_entities - len(entities)
+            print(f"Skipping {skipped} already-scored entities, {len(entities)} remaining")
+
+    if not entities and checkpoint_scores:
+        # All entities already scored — just finalize output
+        print("\nAll entities already scored in checkpoint. Finalizing output...")
+        result = EntityScoreResult(
+            scores=checkpoint_scores,
+            dimensions=dimensions,
+            config={"num_runs": args.num_runs, "temperature": args.temperature, "errors": 0},
         )
+        result.compute_statistics()
+    elif not entities:
+        print("No entities to score.")
+        return 1
     else:
-        raise SystemExit(f"Provider '{args.provider}' not yet supported. Use 'ollama'.")
+        # Initialize LLM provider
+        if args.provider == "ollama":
+            llm_provider = OllamaProvider(
+                model_name=args.model,
+                base_url=args.base_url,
+            )
+        else:
+            raise SystemExit(f"Provider '{args.provider}' not yet supported. Use 'ollama'.")
 
-    # Initialize scorer
-    scorer = EntityScorer(temperature=args.temperature, verbose=getattr(args, 'verbose', False))
+        # Initialize scorer
+        scorer = EntityScorer(temperature=args.temperature, verbose=getattr(args, 'verbose', False))
 
-    # Score entities
-    print(f"\nScoring {len(entities)} entities with {args.num_runs} runs each...")
-    print(f"Model: {args.model} ({args.provider})")
-    print(f"Temperature: {args.temperature}")
-    print()
+        # Score entities
+        n_already = len(checkpoint_scores)
+        print(f"\nScoring {len(entities)} entities with {args.num_runs} runs each...")
+        if n_already:
+            print(f"  ({n_already} previously scored, {len(entities)} remaining)")
+        print(f"Model: {args.model} ({args.provider})")
+        print(f"Temperature: {args.temperature}")
+        if use_checkpoint:
+            print(f"Checkpoint: {checkpoint_path}")
+        print()
 
-    def progress_callback(current: int, total: int):
-        print(f"  Progress: {current}/{total} entities scored", end="\r")
+        num_runs = args.num_runs
 
-    result = await scorer.score_entities(
-        entities=entities,
-        dimensions=dimensions,
-        llm_provider=llm_provider,
-        num_runs=args.num_runs,
-        research_context=research_context,
-        on_progress=progress_callback,
-    )
+        def progress_callback(current: int, total: int, entity_name: str = ""):
+            overall = n_already + current
+            label = (entity_name[:40] + "...") if len(entity_name) > 40 else entity_name
+            print(f"  [{overall}/{total_entities}] Scored:  {label:<43}", end="\r")
+
+        def run_progress_callback(entity_idx, entity_total, entity_name, run_num, total_runs):
+            overall = n_already + entity_idx
+            label = (entity_name[:40] + "...") if len(entity_name) > 40 else entity_name
+            print(f"  [{overall}/{total_entities}] Run {run_num}/{total_runs}: {label:<38}", end="\r")
+
+        def checkpoint_callback(score):
+            _append_to_checkpoint(checkpoint_path, score)
+
+        result = await scorer.score_entities(
+            entities=entities,
+            dimensions=dimensions,
+            llm_provider=llm_provider,
+            num_runs=num_runs,
+            research_context=research_context,
+            on_progress=progress_callback,
+            on_entity_scored=checkpoint_callback if use_checkpoint else None,
+            on_run_progress=run_progress_callback,
+        )
+
+        # Merge checkpoint scores with newly scored entities
+        if checkpoint_scores:
+            result.scores = checkpoint_scores + result.scores
+            result.compute_statistics()
 
     print()  # Clear progress line
 
@@ -239,18 +298,41 @@ async def run_entity_score(args: argparse.Namespace) -> int:
     # Parse output formats
     formats = [f.strip().lower() for f in args.output_format.split(",")]
 
-    # Export
-    output_prefix = input_path.stem
-
     if "json" in formats:
         json_path = output_dir / f"{output_prefix}_scores.json"
-        scorer.save(result, json_path)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(result.to_dict(), f, indent=2)
         print(f"\nWrote scores JSON: {json_path}")
 
     if "csv" in formats:
         csv_path = output_dir / f"{output_prefix}_scores.csv"
         _write_scores_csv(result, csv_path)
         print(f"Wrote scores CSV: {csv_path}")
+
+    # Write metadata
+    dim_names = [d.name.lower() for d in dimensions]
+    metadata = {
+        "input_file": str(input_path),
+        "model": args.model,
+        "provider": args.provider,
+        "temperature": args.temperature,
+        "num_runs": args.num_runs,
+        "dimensions": args.dimensions,
+        "dimension_names": dim_names,
+        "total_entities_scored": len(result.scores),
+        "errors": result.config.get("errors", 0),
+        "timestamp": datetime.now().isoformat(),
+        "package_version": PACKAGE_VERSION,
+    }
+    metadata_path = output_dir / "score_metadata.json"
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Wrote metadata: {metadata_path}")
+
+    # Clean up checkpoint file on successful completion
+    if use_checkpoint and checkpoint_path.exists():
+        checkpoint_path.unlink()
+        print(f"Checkpoint file removed (results saved to output files)")
 
     return 0
 
@@ -276,6 +358,8 @@ def _read_entities_csv(
 
         has_context = context_col in reader.fieldnames
         has_text_id = text_id_col in reader.fieldnames
+        has_window_index = "window_index" in reader.fieldnames
+        has_group = "group" in reader.fieldnames
 
         if not has_context:
             print(f"Warning: Context column '{context_col}' not found. Using empty context.")
@@ -285,11 +369,22 @@ def _read_entities_csv(
             if not entity:
                 continue
 
-            entities.append({
+            ent_dict = {
                 "entity": entity,
                 "context": row.get(context_col, "") if has_context else "",
                 "text_id": row.get(text_id_col, "") if has_text_id else "",
-            })
+            }
+
+            if has_window_index:
+                try:
+                    ent_dict["window_index"] = int(row["window_index"])
+                except (ValueError, TypeError):
+                    ent_dict["window_index"] = None
+
+            if has_group:
+                ent_dict["group"] = row.get("group", "")
+
+            entities.append(ent_dict)
 
             if limit and len(entities) >= limit:
                 break
@@ -312,6 +407,91 @@ def _write_scores_csv(result: Any, path: Path) -> None:
 
         for score in result.scores:
             writer.writerow(score.to_flat_dict())
+
+
+# =============================================================================
+# CHECKPOINTING HELPERS
+# =============================================================================
+
+def _entity_checkpoint_key(ent_data: Dict[str, Any]) -> str:
+    """Create unique key for an entity for checkpoint deduplication."""
+    entity = ent_data.get("entity", "")
+    text_id = ent_data.get("text_id", "")
+    window_index = ent_data.get("window_index")
+    return f"{entity}|{text_id}|{window_index}"
+
+
+def _append_to_checkpoint(checkpoint_path: Path, score: Any) -> None:
+    """Append a scored entity to the checkpoint JSONL file."""
+    with open(checkpoint_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(score.to_dict(include_runs=False)) + "\n")
+
+
+def _load_checkpoint(
+    checkpoint_path: Path,
+    dimensions: list,
+) -> tuple:
+    """
+    Load scored entities from checkpoint JSONL file.
+
+    Args:
+        checkpoint_path: Path to the checkpoint JSONL file.
+        dimensions: List of DimensionDefinition objects for reconstruction.
+
+    Returns:
+        Tuple of (list of EntityScore objects, set of checkpoint keys).
+    """
+    from qualitative_analysis.entity.models import EntityScore, DimensionScore
+
+    scores = []
+    scored_keys = set()
+
+    with open(checkpoint_path, "r", encoding="utf-8") as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning(f"Skipping malformed checkpoint line {line_num}")
+                continue
+
+            key = _entity_checkpoint_key(data)
+            scored_keys.add(key)
+
+            # Reconstruct EntityScore from checkpoint data
+            num_runs = data.get("num_runs", 1)
+            dim_scores = {}
+
+            for dim_def in dimensions:
+                dim_key = dim_def.name.lower()
+                # Collect run scores from flat columns
+                run_scores = []
+                for k in range(1, num_runs + 1):
+                    run_key = f"{dim_key}_run{k}"
+                    if run_key in data and data[run_key] is not None:
+                        run_scores.append(data[run_key])
+
+                if run_scores:
+                    dim_scores[dim_key] = DimensionScore.from_scores(
+                        dimension=dim_key,
+                        scores=run_scores,
+                        justification=data.get(f"{dim_key}_justification", ""),
+                    )
+
+            scores.append(EntityScore(
+                entity=data.get("entity", ""),
+                text_id=data.get("text_id", ""),
+                context=data.get("context", ""),
+                dimension_scores=dim_scores,
+                num_runs=num_runs,
+                processing_time_ms=data.get("processing_time_ms", 0),
+                window_index=data.get("window_index"),
+                group=data.get("group"),
+            ))
+
+    return scores, scored_keys
 
 
 # =============================================================================
@@ -647,8 +827,47 @@ async def run_entity_viz(args: argparse.Namespace) -> int:
             max_entities=args.max_entities,
         )
 
+    # Emit metadata file alongside the output image
+    metadata_path = output_path.with_suffix('.metadata.json')
+    _write_viz_metadata(metadata_path, args, {
+        'command': 'entity viz',
+        'input_csv': str(input_path),
+        'output_path': str(output_path),
+        'n_entities': len(entity_scores),
+        'dimensions': dimension_names,
+    })
+
     print(f"\nVisualization saved to: {output_path}")
     return 0
+
+
+def _write_viz_metadata(
+    metadata_path: Path,
+    args: argparse.Namespace,
+    extra: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Write a JSON metadata file capturing the CLI arguments used."""
+    from datetime import datetime as dt
+
+    metadata: Dict[str, Any] = {
+        'timestamp': dt.now().isoformat(),
+        'cli_args': {},
+    }
+
+    # Capture all CLI args, converting Path objects to strings
+    for key, value in vars(args).items():
+        if key == 'func':
+            continue
+        if isinstance(value, Path):
+            metadata['cli_args'][key] = str(value)
+        else:
+            metadata['cli_args'][key] = value
+
+    if extra:
+        metadata.update(extra)
+
+    with open(metadata_path, 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, indent=2, default=str)
 
 
 def _read_scored_entities_csv(
@@ -737,6 +956,12 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
         help="Distance metric for comparison (default: euclidean). Use 'aitchison' only for compositional data.",
     )
     parser.add_argument(
+        "--all-metrics",
+        action="store_true",
+        default=False,
+        help="Generate heatmaps and similarity maps for all distance metrics (euclidean, cosine, aitchison, emd).",
+    )
+    parser.add_argument(
         "--aggregate",
         choices=["mean", "distribution"],
         default="mean",
@@ -793,6 +1018,12 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
         default="mds",
         help="Method for similarity map: 'mds' (default) or 'umap' (requires umap-learn).",
     )
+    parser.add_argument(
+        "--all-projections",
+        action="store_true",
+        default=False,
+        help="Generate similarity maps using both MDS and UMAP projections.",
+    )
 
     # Group comparison arguments
     parser.add_argument(
@@ -838,6 +1069,16 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=1000,
         help="Number of permutations for permutation test (default: 1000).",
+    )
+    parser.add_argument(
+        "--individual",
+        action="store_true",
+        help="Also save individual ternary plot files per participant.",
+    )
+    parser.add_argument(
+        "--no-numbers",
+        action="store_true",
+        help="Disable numbered labels on individual ternary plots. Entities are ordered by color spectrum in the legend.",
     )
 
     # Bayesian modeling arguments
@@ -1291,78 +1532,155 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
             print(f"  Saved: {overlaid_path}")
 
         if "heatmap" in viz_types:
-            print("Generating distance heatmap...")
-            heatmap_path = output_dir / "distance_heatmap.png"
-            heatmap_title = f"Participant Distance Matrix ({args.metric.capitalize()}"
-            if result.aggregate == "distribution":
-                heatmap_title += ", Distribution"
-            heatmap_title += ")"
-            visualizer.generate_distance_heatmap(
-                result,
-                output_path=heatmap_path,
-                title=heatmap_title,
-            )
-            print(f"  Saved: {heatmap_path}")
+            # Determine which metrics to generate heatmaps for
+            all_metrics = ["euclidean", "cosine", "aitchison", "emd"]
+            metrics_to_plot = all_metrics if getattr(args, 'all_metrics', False) else [args.metric]
+            for m in metrics_to_plot:
+                if m == args.metric:
+                    m_result = result
+                else:
+                    print(f"Computing {m} distances...")
+                    m_result = comparison.compute_distances(metric=m, aggregate=aggregate_mode)
+                suffix = f"_{m}" if len(metrics_to_plot) > 1 else ""
+                heatmap_path = output_dir / f"distance_heatmap{suffix}.png"
+                heatmap_title = f"Participant Distance Matrix ({m.capitalize()}"
+                if m_result.aggregate == "distribution":
+                    heatmap_title += ", Distribution"
+                heatmap_title += ")"
+                print(f"Generating distance heatmap ({m})...")
+                visualizer.generate_distance_heatmap(
+                    m_result,
+                    output_path=heatmap_path,
+                    title=heatmap_title,
+                )
+                print(f"  Saved: {heatmap_path}")
 
         if "forest" in viz_types:
-            print("Generating forest plot...")
-            forest_path = output_dir / "forest_plot.png"
+            print("Generating forest plots (normalized + raw)...")
+            forest_norm_path = output_dir / "forest_plot_normalized.png"
             visualizer.generate_forest_plot(
                 result,
-                output_path=forest_path,
+                output_path=forest_norm_path,
                 dimension_names=dimension_names,
                 participants=participants,
-                title=f"Dimension Scores by Participant (95% CI)",
+                score_mode="normalized",
+                groups=groups,
             )
-            print(f"  Saved: {forest_path}")
+            print(f"  Saved: {forest_norm_path}")
+
+            forest_raw_path = output_dir / "forest_plot_raw.png"
+            visualizer.generate_forest_plot(
+                result,
+                output_path=forest_raw_path,
+                dimension_names=dimension_names,
+                participants=participants,
+                score_mode="raw",
+                groups=groups,
+            )
+            print(f"  Saved: {forest_raw_path}")
 
         if "similarity-map" in viz_types:
-            sim_method = getattr(args, 'similarity_method', 'mds')
-            print(f"Generating similarity map ({sim_method.upper()})...")
-            similarity_path = output_dir / "similarity_map.png"
-            aggregate_mode = getattr(result, 'aggregate', 'mean')
-            mode_label = "centroid" if aggregate_mode == "mean" else "distribution"
-            visualizer.generate_similarity_map(
-                result,
-                output_path=similarity_path,
-                method=sim_method,
-                title=f"Participant Similarity ({args.metric.capitalize()}, {mode_label})",
+            default_method = getattr(args, 'similarity_method', 'mds')
+            all_metrics = ["euclidean", "cosine", "aitchison", "emd"]
+            metrics_to_plot = all_metrics if getattr(args, 'all_metrics', False) else [args.metric]
+            projections = ["mds", "umap"] if getattr(args, 'all_projections', False) else [default_method]
+            multi_metric = len(metrics_to_plot) > 1
+            multi_proj = len(projections) > 1
+            for m in metrics_to_plot:
+                if m == args.metric:
+                    m_result = result
+                else:
+                    m_result = comparison.compute_distances(metric=m, aggregate=aggregate_mode)
+                mode_label = "centroid" if getattr(m_result, 'aggregate', 'mean') == "mean" else "distribution"
+                for proj in projections:
+                    parts = []
+                    if multi_metric:
+                        parts.append(m)
+                    if multi_proj:
+                        parts.append(proj)
+                    suffix = f"_{'_'.join(parts)}" if parts else ""
+                    similarity_path = output_dir / f"similarity_map{suffix}.png"
+                    print(f"Generating similarity map ({proj.upper()}, {m})...")
+                    visualizer.generate_similarity_map(
+                        m_result,
+                        output_path=similarity_path,
+                        method=proj,
+                        title=f"Participant Similarity ({m.capitalize()}, {mode_label}, {proj.upper()})",
+                    )
+                    print(f"  Saved: {similarity_path}")
+
+        # Generate individual per-participant ternary files
+        if getattr(args, 'individual', False) and len(dimension_names) == 3:
+            individual_dir = output_dir / "individual_ternary"
+            individual_dir.mkdir(parents=True, exist_ok=True)
+            print("Generating individual ternary plots...")
+            individual_paths = visualizer.generate_individual_ternary(
+                output_dir=individual_dir,
+                dimension_names=dimension_names,
+                participants=participants,
+                marker_size=80,
+                show_centroid=args.show_centroids,
+                show_convex_hull=args.show_hull,
+                show_numbers=not getattr(args, 'no_numbers', False),
             )
-            print(f"  Saved: {similarity_path}")
+            print(f"  Saved {len(individual_paths)} individual plots to {individual_dir}")
 
     # Generate group-specific visualizations
     if groups:
+        all_metrics = ["euclidean", "cosine", "aitchison", "emd"]
+        metrics_to_plot = all_metrics if getattr(args, 'all_metrics', False) else [args.metric]
+
         # Group-colored similarity map
         if "similarity-map" in viz_types:
-            sim_method = getattr(args, 'similarity_method', 'mds')
-            print(f"Generating group-colored similarity map ({sim_method.upper()})...")
-            group_sim_path = output_dir / "group_similarity_map.png"
-            aggregate_mode = getattr(result, 'aggregate', 'mean')
-            mode_label = "centroid" if aggregate_mode == "mean" else "distribution"
-            visualizer.generate_similarity_map(
-                result,
-                output_path=group_sim_path,
-                method=sim_method,
-                title=f"Group Similarity ({args.metric.capitalize()}, {mode_label})",
-                groups=groups,
-            )
-            print(f"  Saved: {group_sim_path}")
+            default_method = getattr(args, 'similarity_method', 'mds')
+            projections = ["mds", "umap"] if getattr(args, 'all_projections', False) else [default_method]
+            multi_metric = len(metrics_to_plot) > 1
+            multi_proj = len(projections) > 1
+            for m in metrics_to_plot:
+                if m == args.metric:
+                    m_result = result
+                else:
+                    m_result = comparison.compute_distances(metric=m, aggregate=aggregate_mode)
+                mode_label = "centroid" if getattr(m_result, 'aggregate', 'mean') == "mean" else "distribution"
+                for proj in projections:
+                    parts = []
+                    if multi_metric:
+                        parts.append(m)
+                    if multi_proj:
+                        parts.append(proj)
+                    suffix = f"_{'_'.join(parts)}" if parts else ""
+                    group_sim_path = output_dir / f"group_similarity_map{suffix}.png"
+                    print(f"Generating group-colored similarity map ({proj.upper()}, {m})...")
+                    visualizer.generate_similarity_map(
+                        m_result,
+                        output_path=group_sim_path,
+                        method=proj,
+                        title=f"Group Similarity ({m.capitalize()}, {mode_label}, {proj.upper()})",
+                        groups=groups,
+                    )
+                    print(f"  Saved: {group_sim_path}")
 
         # Group-ordered heatmap
         if "heatmap" in viz_types:
-            print("Generating group-ordered heatmap...")
-            group_heatmap_path = output_dir / "group_heatmap.png"
-            heatmap_title = f"Group Distance Matrix ({args.metric.capitalize()}"
-            if result.aggregate == "distribution":
-                heatmap_title += ", Distribution"
-            heatmap_title += ")"
-            visualizer.generate_distance_heatmap(
-                result,
-                output_path=group_heatmap_path,
-                title=heatmap_title,
-                groups=groups,
-            )
-            print(f"  Saved: {group_heatmap_path}")
+            for m in metrics_to_plot:
+                if m == args.metric:
+                    m_result = result
+                else:
+                    m_result = comparison.compute_distances(metric=m, aggregate=aggregate_mode)
+                suffix = f"_{m}" if len(metrics_to_plot) > 1 else ""
+                heatmap_title = f"Group Distance Matrix ({m.capitalize()}"
+                if m_result.aggregate == "distribution":
+                    heatmap_title += ", Distribution"
+                heatmap_title += ")"
+                group_heatmap_path = output_dir / f"group_heatmap{suffix}.png"
+                print(f"Generating group-ordered heatmap ({m})...")
+                visualizer.generate_distance_heatmap(
+                    m_result,
+                    output_path=group_heatmap_path,
+                    title=heatmap_title,
+                    groups=groups,
+                )
+                print(f"  Saved: {group_heatmap_path}")
 
     # =========================================================================
     # BAYESIAN HIERARCHICAL MODEL
@@ -1886,6 +2204,12 @@ def add_entity_compare_viz_args(parser: argparse.ArgumentParser) -> None:
         help="Distance metric for heatmap/similarity-map (default: euclidean).",
     )
     parser.add_argument(
+        "--all-metrics",
+        action="store_true",
+        default=False,
+        help="Generate heatmaps and similarity maps for all distance metrics (euclidean, cosine, aitchison, emd).",
+    )
+    parser.add_argument(
         "--aggregate",
         choices=["mean", "distribution"],
         default="mean",
@@ -1943,6 +2267,22 @@ def add_entity_compare_viz_args(parser: argparse.ArgumentParser) -> None:
         choices=["mds", "umap"],
         default="mds",
         help="Method for similarity map (default: mds).",
+    )
+    parser.add_argument(
+        "--all-projections",
+        action="store_true",
+        default=False,
+        help="Generate similarity maps using both MDS and UMAP projections.",
+    )
+    parser.add_argument(
+        "--individual",
+        action="store_true",
+        help="Also save individual ternary plot files per participant.",
+    )
+    parser.add_argument(
+        "--no-numbers",
+        action="store_true",
+        help="Disable numbered labels on individual ternary plots. Entities are ordered by color spectrum in the legend.",
     )
 
 
@@ -2046,6 +2386,23 @@ async def run_entity_compare_viz(args: argparse.Namespace) -> int:
         )
         generated.append(path)
 
+        # Generate individual per-participant ternary files
+        if getattr(args, 'individual', False):
+            individual_dir = output_dir / "individual_ternary"
+            individual_dir.mkdir(parents=True, exist_ok=True)
+            print("Generating individual ternary plots...")
+            individual_paths = visualizer.generate_individual_ternary(
+                output_dir=individual_dir,
+                dimension_names=dimension_names,
+                participants=participants,
+                marker_size=80,
+                show_centroid=args.show_centroids,
+                show_convex_hull=args.show_hull,
+                show_numbers=not getattr(args, 'no_numbers', False),
+            )
+            generated.extend(individual_paths)
+            print(f"  Saved {len(individual_paths)} individual plots to {individual_dir}")
+
     if "overlaid" in viz_types and len(dimension_names) == 3:
         print("Generating overlaid ternary plot...")
         path = output_dir / "overlaid_ternary.png"
@@ -2059,40 +2416,92 @@ async def run_entity_compare_viz(args: argparse.Namespace) -> int:
         generated.append(path)
 
     if "heatmap" in viz_types:
-        print("Generating distance heatmap...")
-        path = output_dir / "distance_heatmap.png"
-        visualizer.generate_distance_heatmap(
-            result,
-            output_path=path,
-            groups=groups,
-        )
-        generated.append(path)
+        all_metrics = ["euclidean", "cosine", "aitchison", "emd"]
+        metrics_to_plot = all_metrics if getattr(args, 'all_metrics', False) else [args.metric]
+        for m in metrics_to_plot:
+            if m == args.metric:
+                m_result = result
+            else:
+                print(f"Computing {m} distances...")
+                m_result = comparison.compute_distances(metric=m, aggregate=aggregate_mode)
+            suffix = f"_{m}" if len(metrics_to_plot) > 1 else ""
+            path = output_dir / f"distance_heatmap{suffix}.png"
+            print(f"Generating distance heatmap ({m})...")
+            visualizer.generate_distance_heatmap(
+                m_result,
+                output_path=path,
+                groups=groups,
+            )
+            generated.append(path)
 
     if "forest" in viz_types:
-        print("Generating forest plot...")
-        path = output_dir / "forest_plot.png"
+        print("Generating forest plots (normalized + raw)...")
+        path_norm = output_dir / "forest_plot_normalized.png"
         visualizer.generate_forest_plot(
             result,
-            output_path=path,
+            output_path=path_norm,
             dimension_names=dimension_names,
             participants=participants,
-        )
-        generated.append(path)
-
-    if "similarity-map" in viz_types:
-        sim_method = getattr(args, "similarity_method", "mds")
-        print(f"Generating similarity map ({sim_method.upper()})...")
-        path = output_dir / "similarity_map.png"
-        visualizer.generate_similarity_map(
-            result,
-            output_path=path,
-            method=sim_method,
+            score_mode="normalized",
             groups=groups,
         )
-        generated.append(path)
+        generated.append(path_norm)
+
+        path_raw = output_dir / "forest_plot_raw.png"
+        visualizer.generate_forest_plot(
+            result,
+            output_path=path_raw,
+            dimension_names=dimension_names,
+            participants=participants,
+            score_mode="raw",
+            groups=groups,
+        )
+        generated.append(path_raw)
+
+    if "similarity-map" in viz_types:
+        default_method = getattr(args, "similarity_method", "mds")
+        all_metrics = ["euclidean", "cosine", "aitchison", "emd"]
+        metrics_to_plot = all_metrics if getattr(args, 'all_metrics', False) else [args.metric]
+        projections = ["mds", "umap"] if getattr(args, 'all_projections', False) else [default_method]
+        multi_metric = len(metrics_to_plot) > 1
+        multi_proj = len(projections) > 1
+        for m in metrics_to_plot:
+            if m == args.metric:
+                m_result = result
+            else:
+                m_result = comparison.compute_distances(metric=m, aggregate=aggregate_mode)
+            for proj in projections:
+                parts = []
+                if multi_metric:
+                    parts.append(m)
+                if multi_proj:
+                    parts.append(proj)
+                suffix = f"_{'_'.join(parts)}" if parts else ""
+                path = output_dir / f"similarity_map{suffix}.png"
+                print(f"Generating similarity map ({proj.upper()}, {m})...")
+                visualizer.generate_similarity_map(
+                    m_result,
+                    output_path=path,
+                    method=proj,
+                    groups=groups,
+                )
+                generated.append(path)
 
     for p in generated:
         print(f"  Saved: {p}")
+
+    # Emit metadata file in the output directory
+    metadata_path = output_dir / "viz_metadata.json"
+    _write_viz_metadata(metadata_path, args, {
+        'command': 'entity compare-viz',
+        'input_csv': str(input_path),
+        'output_dir': str(output_dir),
+        'n_participants': n_participants,
+        'dimensions': dimension_names,
+        'viz_types': viz_types,
+        'groups': {k: v for k, v in groups.items()} if groups else None,
+        'generated_files': [str(p) for p in generated],
+    })
 
     print(f"\nVisualization complete. Output directory: {output_dir}")
     return 0
@@ -2584,4 +2993,260 @@ async def run_entity_cluster(args: argparse.Namespace) -> int:
         json.dump(results, f, indent=2)
 
     print(f"Results saved to: {output_dir}")
+    return 0
+
+
+# =============================================================================
+# ENTITY DETECTION COMMAND
+# =============================================================================
+
+def add_entity_detect_args(parser: argparse.ArgumentParser) -> None:
+    """
+    Add entity detection arguments to a parser.
+
+    This is used by the unified CLI via `qa entity detect`.
+    """
+    parser.add_argument(
+        "input_csv",
+        help="Path to input CSV file with text to analyze.",
+    )
+    parser.add_argument(
+        "--text-col",
+        default="text",
+        help="Column name for text content (default: text).",
+    )
+    parser.add_argument(
+        "--id-col",
+        default=None,
+        help="Column name for text IDs (default: auto-generate).",
+    )
+    parser.add_argument(
+        "--group-col",
+        default=None,
+        help="Column name for group assignments (propagated through pipeline).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory (default: creates timestamped dir).",
+    )
+    parser.add_argument(
+        "--model",
+        default="gpt-oss:120b",
+        help="LLM model name (default: gpt-oss:120b).",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=["ollama", "openai", "anthropic"],
+        default="ollama",
+        help="LLM provider (default: ollama).",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:11434",
+        help="Base URL for Ollama provider (default: http://localhost:11434).",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.1,
+        help="LLM temperature for generation (default: 0.1).",
+    )
+    # Windowing args (--window-size, --stride, --chunk-unit, --tokenizer, --no-windowing)
+    from qualitative_analysis.core.cli_utils import add_common_windowing_args
+    add_common_windowing_args(parser)
+
+    parser.add_argument(
+        "--prompt-version",
+        type=int,
+        default=1,
+        help="Entity extraction prompt version (default: 1).",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="Print LLM prompts and responses to terminal.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit number of texts to process (for testing).",
+    )
+
+
+async def run_entity_detect(args: argparse.Namespace) -> int:
+    """
+    Run entity detection on input CSV.
+
+    Extracts entities from text using LLM analysis and outputs:
+    - entities.csv: One row per entity occurrence with context
+    - entities_summary.csv: One row per text with entity list
+    - detect_metadata.json: Processing metadata
+    """
+    from qualitative_analysis.entity.detector import EntityDetector
+    from qualitative_analysis.core.providers import OllamaProvider
+
+    input_path = Path(args.input_csv)
+    if not input_path.exists():
+        raise SystemExit(f"Input file not found: {input_path}")
+
+    # Setup output directory
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+        output_dir = input_path.parent / f"entities_{timestamp}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize LLM provider
+    if args.provider == "ollama":
+        llm_provider = OllamaProvider(
+            model_name=args.model,
+            base_url=args.base_url,
+            temperature=args.temperature,
+            log_prompts=args.log_llm,
+            log_responses=args.log_llm,
+        )
+    else:
+        raise SystemExit(f"Provider '{args.provider}' not yet supported. Use 'ollama'.")
+
+    # Initialize detector
+    detector = EntityDetector(
+        llm_provider=llm_provider,
+        window_size=args.window_size,
+        stride=args.stride,
+        prompt_version=args.prompt_version,
+        chunk_unit=args.chunk_unit,
+        tokenizer_name=args.tokenizer,
+    )
+
+    # Read input CSV
+    print(f"Reading texts from: {input_path}")
+    with open(input_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    if args.limit:
+        rows = rows[:args.limit]
+
+    print(f"Processing {len(rows)} texts...")
+    print(f"Model: {args.model} ({args.provider})")
+    print(f"Windowing: {'disabled' if args.no_windowing else f'{args.window_size} {args.chunk_unit}, stride {args.stride}'}")
+    print()
+
+    # Build text_id → group mapping if group column specified
+    group_col = getattr(args, 'group_col', None)
+    has_groups = False
+    text_id_to_group: Dict[str, str] = {}
+    if group_col:
+        for row in rows:
+            tid = row.get(args.id_col, "") if args.id_col else ""
+            grp = row.get(group_col, "")
+            if tid and grp:
+                text_id_to_group[tid] = grp
+        has_groups = bool(text_id_to_group)
+        if has_groups:
+            groups_found = sorted(set(text_id_to_group.values()))
+            print(f"Group column '{group_col}': {len(groups_found)} groups ({', '.join(groups_found)})")
+        else:
+            print(f"Warning: --group-col '{group_col}' specified but no group values found")
+
+    # Process each row
+    all_results = []
+    all_entity_rows = []
+
+    for i, row in enumerate(rows):
+        text = row.get(args.text_col, "")
+        text_id = row.get(args.id_col, f"text_{i}") if args.id_col else f"text_{i}"
+
+        if not text.strip():
+            logger.warning(f"Empty text for {text_id}, skipping")
+            continue
+
+        print(f"Processing {text_id} ({i+1}/{len(rows)})...", end=" ", flush=True)
+
+        result = await detector.detect(
+            text=text,
+            text_id=text_id,
+            use_windowing=not args.no_windowing,
+        )
+        all_results.append(result)
+
+        print(f"found {len(result.entities)} entities")
+
+        for ec in result.entity_contexts:
+            entity_row = {
+                "text_id": text_id,
+                "entity": ec["entity"],
+                "context": ec["context"],
+                "window_index": ec["window_index"],
+            }
+            if has_groups:
+                entity_row["group"] = text_id_to_group.get(text_id, "")
+            all_entity_rows.append(entity_row)
+
+    # Write entities.csv (one row per entity occurrence)
+    fieldnames = ["text_id", "entity", "context", "window_index"]
+    if has_groups:
+        fieldnames.append("group")
+    entities_path = output_dir / "entities.csv"
+    with open(entities_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(all_entity_rows)
+
+    # Write entities_summary.csv (one row per text)
+    summary_fieldnames = ["text_id", "entity_count", "entities_json"]
+    if has_groups:
+        summary_fieldnames.append("group")
+    summary_path = output_dir / "entities_summary.csv"
+    with open(summary_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=summary_fieldnames)
+        writer.writeheader()
+        for result in all_results:
+            summary_row = {
+                "text_id": result.text_id,
+                "entity_count": len(result.entities),
+                "entities_json": json.dumps(result.entities),
+            }
+            if has_groups:
+                summary_row["group"] = text_id_to_group.get(result.text_id, "")
+            writer.writerow(summary_row)
+
+    # Compute unique entities across all texts
+    unique_entities = set(r["entity"].lower() for r in all_entity_rows)
+
+    # Write metadata
+    metadata = {
+        "input_file": str(input_path),
+        "model": args.model,
+        "provider": args.provider,
+        "prompt_version": args.prompt_version,
+        "windowing": not args.no_windowing,
+        "window_size": args.window_size if not args.no_windowing else None,
+        "stride": args.stride if not args.no_windowing else None,
+        "total_texts": len(all_results),
+        "total_entity_occurrences": len(all_entity_rows),
+        "unique_entities": len(unique_entities),
+        "timestamp": datetime.now().isoformat(),
+        "package_version": PACKAGE_VERSION,
+    }
+    with open(output_dir / "detect_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    # Print summary
+    print()
+    print("=" * 50)
+    print("Entity Detection Complete")
+    print("=" * 50)
+    print(f"Texts processed:           {len(all_results)}")
+    print(f"Total entity occurrences:  {len(all_entity_rows)}")
+    print(f"Unique entities:           {len(unique_entities)}")
+    print()
+    print(f"Output files:")
+    print(f"  {entities_path}")
+    print(f"  {summary_path}")
+    print(f"  {output_dir / 'detect_metadata.json'}")
+
     return 0

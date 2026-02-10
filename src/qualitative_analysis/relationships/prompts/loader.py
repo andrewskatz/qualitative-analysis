@@ -9,7 +9,7 @@ DEFAULT_VERSIONS = {
     "system_prompt": 1,
     "relationship_extraction": 2,
     "relationship_only": 1,
-    "entity_extraction": 3,
+    "entity_extraction": 1,
     "coref_resolution": 1,
     "window_summary": 1,
 }

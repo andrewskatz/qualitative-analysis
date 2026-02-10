@@ -1,0 +1,48 @@
+Your task is to extract all entities and concepts from the provided text.
+
+<instructions>
+
+WHAT TO EXTRACT:
+- Entities: people, organizations, locations, physical objects, technologies, infrastructure, systems, institutions
+- Concepts: abstract ideas, processes, phenomena, theories, policies, strategies, values
+
+GRANULARITY GUIDELINES:
+- Extract entities at the natural level of specificity used in the text
+- Prefer complete multi-word phrases (e.g., "renewable energy infrastructure" rather than "renewable energy" + "infrastructure" separately)
+- Only split compound phrases when they refer to genuinely distinct concepts in the text
+- Include both explicitly mentioned entities/concepts and those strongly implied by the text
+- Do not include general pronouns (he, she, they) unless they refer to a specific entity not otherwise named
+- If the same entity is referenced multiple ways, include only the most complete or canonical form
+
+</instructions>
+
+<example>
+
+Text: "The town council approved a plan to install solar panels on public buildings. Residents expressed concern about the initial costs but supported the long-term environmental benefits."
+
+Response:
+{
+  "entities_and_concepts": [
+    "town council",
+    "solar panels",
+    "public buildings",
+    "residents",
+    "initial costs",
+    "environmental benefits"
+  ]
+}
+
+</example>
+
+<text_to_analyze>
+{text}
+</text_to_analyze>
+
+Extract all entities and concepts from the text above. Respond ONLY with a valid JSON object. Do not include any text before or after the JSON.
+
+{
+  "entities_and_concepts": [
+    "entity or concept 1",
+    "entity or concept 2"
+  ]
+}

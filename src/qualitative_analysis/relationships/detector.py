@@ -7,7 +7,6 @@ from typing import Optional, Dict, Any, List
 import json
 import logging
 from ..core.llm import BaseLLMProvider
-from ..core.providers import OllamaProvider
 from ..core.text import SlidingWindowProcessor
 from .components.context_buffer import EntityBuffer
 from .components.entity_extractor import EntityExtractor
@@ -28,12 +27,10 @@ class RelationshipDetector:
 
     def __init__(
         self,
-        model_name: str = "mistral-small",
-        provider: str = "ollama",
-        provider_config: Optional[Dict[str, Any]] = None,
+        llm_provider: BaseLLMProvider,
         strategy: str = "two_pass",
         prompt_version: int = 2,
-        entity_prompt_version: int = 3,
+        entity_prompt_version: int = 1,
         relationship_prompt_version: int = 1,
         coref_prompt_version: int = 1,
         # Text processor config
@@ -52,17 +49,8 @@ class RelationshipDetector:
         context_buffer_size: int = 0,
         # Coreference resolution
         coref_resolution: bool = False,
-        # Dependency Injection
-        llm_provider: Optional[BaseLLMProvider] = None,
     ):
-        provider_config = provider_config or {}
-
-        if llm_provider:
-            self.llm = llm_provider
-        elif provider == "ollama":
-            self.llm = OllamaProvider(model_name, **provider_config)
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
+        self.llm = llm_provider
 
         if strategy not in {"two_pass", "one_pass"}:
             raise ValueError(f"Unsupported strategy: {strategy}")
@@ -94,8 +82,22 @@ class RelationshipDetector:
         self,
         text: str,
         current_entities: Optional[List[str]] = None,
+        text_id: str = "",
     ) -> RelationshipResult:
-        if self.coref_resolution and text:
+        # Empty text guard
+        if not text or not text.strip():
+            logger.warning(f"Empty text for text_id={text_id}, returning empty result")
+            return RelationshipResult(
+                entities=[],
+                relationships=[],
+                metadata={"strategy": f"relationship_{self.strategy}", "window_count": 0,
+                          "relationship_count": 0, "entity_count": 0, "windows": []},
+            )
+
+        # Reset context buffer per detect() call to prevent cross-text contamination
+        self.context_buffer = EntityBuffer(self.context_buffer.max_size)
+
+        if self.coref_resolution:
             text = await self._resolve_coreferences(text)
 
         windows = self.text_processor.process(text)
@@ -103,7 +105,8 @@ class RelationshipDetector:
             return RelationshipResult(
                 entities=[],
                 relationships=[],
-                metadata={"strategy": "relationship_extraction", "window_count": 0},
+                metadata={"strategy": f"relationship_{self.strategy}", "window_count": 0,
+                          "relationship_count": 0, "entity_count": 0, "windows": []},
             )
 
         summaries_enabled = self.enable_summaries and len(windows) >= self.summary_min_windows
@@ -113,59 +116,75 @@ class RelationshipDetector:
         window_results: List[Dict[str, Any]] = []
 
         for i, window in enumerate(windows):
-            summary = None
-            summary_context = None
-            if summary_buffer is not None:
-                summary = await self.summarizer.summarize(
-                    window,
-                    summary_buffer.get_context(),
-                    window_index=i,
-                )
-                summary_buffer.add(summary)
-                if self.include_summaries_in_prompt:
-                    summary_context = summary_buffer.get_formatted_context()
-                    if summary_context == "No prior context.":
-                        summary_context = None
-            entities_seed = self._merge_entities(
-                current_entities or [],
-                self.context_buffer.get_entities(),
-            )
-
-            if self.strategy == "two_pass":
-                entities_from_llm = await self.entity_extractor.extract(window)
-                entities = self._merge_entities(entities_seed, entities_from_llm)
-                relationships = await self.relationship_only_extractor.extract(
-                    window,
-                    entities,
-                    window_index=i,
-                    summary_context=summary_context,
-                )
-                self.context_buffer.add(entities)
-            else:
-                entities, relationships = await self.relationship_extractor.extract(
-                    window,
-                    entities_seed,
-                    window_index=i,
-                    summary_context=summary_context,
-                )
-                self.context_buffer.add(entities)
-
-            all_entities.extend(entities)
-            all_relationships.extend(relationships)
-
-            if self.return_windows:
-                window_results.append(
-                    {
-                        "window_index": i,
-                        "window_text": window,
-                        "summary": summary.text if summary else "",
-                        "entities": entities,
-                        "relationships": [rel.to_dict() for rel in relationships],
-                        "relationship_count": len(relationships),
-                    }
+            try:
+                summary = None
+                summary_context = None
+                if summary_buffer is not None:
+                    summary = await self.summarizer.summarize(
+                        window,
+                        summary_buffer.get_context(),
+                        window_index=i,
+                    )
+                    summary_buffer.add(summary)
+                    if self.include_summaries_in_prompt:
+                        summary_context = summary_buffer.get_formatted_context()
+                        if summary_context == "No prior context.":
+                            summary_context = None
+                entities_seed = self._merge_entities(
+                    current_entities or [],
+                    self.context_buffer.get_entities(),
                 )
 
-        dedup_entities = sorted({e for e in all_entities if e})
+                if self.strategy == "two_pass":
+                    entities_from_llm = await self.entity_extractor.extract(window)
+                    entities = self._merge_entities(entities_seed, entities_from_llm)
+                    relationships = await self.relationship_only_extractor.extract(
+                        window,
+                        entities,
+                        window_index=i,
+                        summary_context=summary_context,
+                    )
+                    self.context_buffer.add(entities)
+                else:
+                    entities, relationships = await self.relationship_extractor.extract(
+                        window,
+                        entities_seed,
+                        window_index=i,
+                        summary_context=summary_context,
+                    )
+                    self.context_buffer.add(entities)
+
+                # Propagate text_id to all extracted relationships
+                if text_id:
+                    for rel in relationships:
+                        rel.text_id = text_id
+
+                all_entities.extend(entities)
+                all_relationships.extend(relationships)
+
+                if self.return_windows:
+                    window_results.append(
+                        {
+                            "window_index": i,
+                            "window_text": window,
+                            "summary": summary.text if summary else "",
+                            "entities": entities,
+                            "relationships": [rel.to_dict() for rel in relationships],
+                            "relationship_count": len(relationships),
+                        }
+                    )
+            except Exception as e:
+                logger.error(f"Extraction failed for window {i} (text_id={text_id}): {e}")
+                continue
+
+        # Case-insensitive dedup preserving first-seen casing
+        seen_lower: set = set()
+        dedup_entities: List[str] = []
+        for e in all_entities:
+            if e and e.lower() not in seen_lower:
+                dedup_entities.append(e)
+                seen_lower.add(e.lower())
+        dedup_entities.sort()
         return RelationshipResult(
             entities=dedup_entities,
             relationships=all_relationships,
@@ -180,13 +199,13 @@ class RelationshipDetector:
 
     def _merge_entities(self, *lists: List[str]) -> List[str]:
         merged: List[str] = []
-        seen = set()
+        seen: set = set()
         for items in lists:
             for item in items:
                 value = item.strip() if isinstance(item, str) else ""
-                if value and value not in seen:
+                if value and value.lower() not in seen:
                     merged.append(value)
-                    seen.add(value)
+                    seen.add(value.lower())
         return merged
 
     async def _resolve_coreferences(self, text: str) -> str:

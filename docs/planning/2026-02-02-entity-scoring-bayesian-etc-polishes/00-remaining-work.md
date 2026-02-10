@@ -1,6 +1,6 @@
 # Remaining Work: Entity Scoring, Bayesian Modeling & Polish
 
-**Date:** 2026-02-02 (updated after Session 2)
+**Date:** 2026-02-02 (final update 2026-02-04 — all planned work complete)
 **Package:** `qualitative-analysis`
 **Component:** `qa entity` — scoring, comparison, Bayesian modeling
 **Progress References:**
@@ -47,7 +47,7 @@ This document tracks all unfinished tasks identified during the 2026-02-02 revie
 | Credible region ellipses on ternary | Comparison Plan Viz Spec §3 | High | ✅ Done | `plot_group_ternary()` with 95% credible regions from Bayesian posteriors |
 | Overlaid ternary with uncertainty | Comparison Plan Viz Spec §2 | Medium | ✅ Done | `show_confidence_ellipses` parameter on `generate_overlaid_ternary()` |
 | Centroid comparison with Bayesian credible regions | Comparison Plan Viz Spec §3 | Medium | ✅ Done | Part of `plot_group_ternary()` |
-| LOO-CV model comparison | Model Spec §6.2 | Low | Not implemented | `az.loo()` for model comparison if alternative specs are tested |
+| LOO-CV model comparison | Model Spec §6.2 | Low | ✅ Done | `compare_models()` in bayesian.py; `--loo-compare` CLI flag |
 
 ---
 
@@ -61,17 +61,23 @@ This document tracks all unfinished tasks identified during the 2026-02-02 revie
 
 ---
 
-## 5. Statistical Methods Not Yet Implemented
+## 5. Statistical Methods — ✅ All Implemented (2026-02-04)
 
-These are from the "Statistical Methods Catalog" in the comparison plan. They are lower priority but represent the full vision.
+These are from the "Statistical Methods Catalog" in the comparison plan. All have been implemented.
 
-| Method | Plan Section | Priority | Notes |
-|--------|-------------|----------|-------|
-| Krippendorff's Alpha | §3.2 | Medium | Multi-rater agreement metric; straightforward to implement |
-| Participant clustering (hierarchical, k-means, GMM, HDBSCAN) | §5.1 | Low | Discover natural participant groupings from scoring patterns |
-| Gaussian Mixture Model (soft assignments) | §5.1 | Low | Unknown group discovery with uncertainty |
-| Bayes Factor | §4.3 | Low | Evidence ratio for difference vs no difference |
-| PCA on CLR scores | §5.3 | Low | 2D participant map showing linear relationships |
+| Method | Plan Section | Priority | Status | Notes |
+|--------|-------------|----------|--------|-------|
+| Krippendorff's Alpha | §3.2 | Medium | ✅ Done | `agreement.py`: `krippendorff_alpha()`, `compute_agreement()`, bootstrap CI |
+| Participant clustering (hierarchical, k-means, HDBSCAN) | §5.1 | Low | ✅ Done | `clustering.py`: `cluster_hierarchical()`, `cluster_kmeans()`, `cluster_hdbscan()` |
+| Bayes Factor | §4.3 | Low | ✅ Done | `bayesian.py`: `compute_bayes_factor()` using Savage-Dickey density ratio |
+| PCA on CLR scores | §5.3 | Low | ✅ Done | `clustering.py`: `pca_on_scores()` with optional CLR transform |
+| LOO-CV model comparison | §6.2 | Low | ✅ Done | `bayesian.py`: `compare_models()` using `az.loo()` full vs reduced |
+
+**CLI commands added:**
+- `qa entity agreement` — compute inter-rater agreement
+- `qa entity cluster` — participant clustering with optional PCA
+- `qa entity compare --loo-compare` — LOO-CV model comparison
+- `qa entity compare --bayes-factor` — Bayes Factor computation
 
 ---
 
@@ -114,8 +120,21 @@ Completed items struck through; remaining items renumbered:
 
 10. ~~Docstring and type hint review~~ ✅
 
-**Remaining recommended order:**
+**All planned work complete as of 2026-02-04:**
 
-1. **Krippendorff's Alpha** — multi-rater agreement metric
-2. **LOO-CV model comparison** — if alternative model specs are tested
-3. **Participant clustering, Bayes Factor, PCA** — lower priority exploratory methods
+11. ~~Krippendorff's Alpha~~ ✅ — `agreement.py`, `qa entity agreement`
+12. ~~LOO-CV model comparison~~ ✅ — `bayesian.py`, `--loo-compare` flag
+13. ~~Participant clustering, Bayes Factor, PCA~~ ✅ — `clustering.py`, `bayesian.py`, `qa entity cluster`
+
+---
+
+## Status Summary
+
+**The entity analysis pipeline is functionally complete.** All planned features from the original comparison plan and Bayesian implementation plan have been implemented and tested (117 tests passing).
+
+**Remaining deferred items (Section 7) are intentionally out-of-scope:**
+- Dirichlet regression, longitudinal comparison, cross-entity comparison
+
+**Open questions (Section 6):**
+- Missing data handling: documented, Bayesian handles naturally
+- Weighted comparisons: deferred until user need is clear

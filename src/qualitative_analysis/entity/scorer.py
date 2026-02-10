@@ -20,6 +20,7 @@ from .models import (
     EntityScore,
     EntityScoreResult,
 )
+from .prompts.loader import load_entity_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class EntityScorer:
         """
         self.temperature = temperature
         self.verbose = verbose
+        self.system_prompt = load_entity_prompt("scoring_system_prompt")
 
         if prompt_template:
             self._prompt_template = prompt_template
@@ -113,6 +115,9 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
         num_runs: int = 3,
         research_context: Optional[Dict[str, str]] = None,
         text_id: str = "",
+        window_index: Optional[int] = None,
+        group: Optional[str] = None,
+        on_run_progress: Optional[callable] = None,
     ) -> EntityScore:
         """
         Score an entity with multiple runs for uncertainty estimation.
@@ -126,6 +131,8 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
             research_context: Optional research context dict with:
                 data_type, data_collection_context, research_question.
             text_id: Identifier for the source text.
+            window_index: Window index from detection.
+            group: Group assignment from input data.
 
         Returns:
             EntityScore with aggregated statistics across runs.
@@ -140,6 +147,8 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
         # Run scoring multiple times
         runs: List[SingleRunScore] = []
         for run_num in range(1, num_runs + 1):
+            if on_run_progress:
+                on_run_progress(run_num, num_runs)
             try:
                 run_result = await self._score_single_run(
                     entity=entity,
@@ -170,6 +179,8 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
             runs=runs,
             num_runs=len(runs),
             processing_time_ms=round(processing_time_ms, 2),
+            window_index=window_index,
+            group=group,
         )
 
     async def score_entities(
@@ -180,6 +191,8 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
         num_runs: int = 3,
         research_context: Optional[Dict[str, str]] = None,
         on_progress: Optional[callable] = None,
+        on_entity_scored: Optional[callable] = None,
+        on_run_progress: Optional[callable] = None,
     ) -> EntityScoreResult:
         """
         Score multiple entities.
@@ -190,7 +203,11 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
             llm_provider: LLM provider instance.
             num_runs: Number of scoring runs per entity.
             research_context: Optional research context.
-            on_progress: Optional callback(current, total) for progress.
+            on_progress: Optional callback(current, total, entity_name) for progress.
+            on_entity_scored: Optional callback(EntityScore) called after each entity
+                is successfully scored. Used for checkpointing.
+            on_run_progress: Optional callback(entity_idx, total_entities, entity_name,
+                run_num, num_runs) called before each LLM scoring run.
 
         Returns:
             EntityScoreResult with all scores and statistics.
@@ -212,10 +229,21 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
             entity = ent_data.get("entity", "")
             context = ent_data.get("context", "")
             text_id = ent_data.get("text_id", "")
+            window_index = ent_data.get("window_index")
+            group = ent_data.get("group")
 
             if not entity:
                 logger.warning(f"Skipping empty entity at index {i}")
                 continue
+
+            # Build per-entity run progress callback
+            entity_run_cb = None
+            if on_run_progress:
+                def _make_cb(idx, total, name):
+                    def cb(run_num, total_runs):
+                        on_run_progress(idx, total, name, run_num, total_runs)
+                    return cb
+                entity_run_cb = _make_cb(i + 1, len(entities), entity)
 
             try:
                 score = await self.score_entity(
@@ -226,14 +254,20 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
                     num_runs=num_runs,
                     research_context=research_context,
                     text_id=text_id,
+                    window_index=window_index,
+                    group=group,
+                    on_run_progress=entity_run_cb,
                 )
                 scores.append(score)
+
+                if on_entity_scored:
+                    on_entity_scored(score)
             except Exception as e:
                 logger.error(f"Failed to score entity '{entity}': {e}")
                 errors += 1
 
             if on_progress:
-                on_progress(i + 1, len(entities))
+                on_progress(i + 1, len(entities), entity)
 
         result = EntityScoreResult(
             scores=scores,
@@ -290,6 +324,8 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
             print("\n" + "=" * 80)
             print(f"ENTITY: {entity} (Run {run_number})")
             print("=" * 80)
+            print("\n--- SYSTEM PROMPT ---")
+            print(self.system_prompt)
             print("\n--- PROMPT ---")
             print(prompt)
             print("-" * 40)
@@ -297,6 +333,7 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
         # Call LLM
         response = await llm_provider.generate(
             prompt=prompt,
+            system_prompt=self.system_prompt,
             temperature=self.temperature,
         )
 

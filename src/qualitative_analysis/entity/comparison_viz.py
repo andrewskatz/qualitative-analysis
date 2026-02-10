@@ -106,18 +106,27 @@ class ComparisonVisualizer:
 
         if show_labels and len(dimension_names) >= 3:
             label_offset = 0.06
+            # RGB channel colors: dim[0]=Social→Blue, dim[1]=Ecological→Green, dim[2]=Technological→Red
+            dim_label_colors = [
+                (0.0, 0.0, 0.85),   # dim[0] Social → Blue
+                (0.0, 0.60, 0.0),   # dim[1] Ecological → Green (darker for readability)
+                (0.85, 0.0, 0.0),   # dim[2] Technological → Red
+            ]
 
             # Bottom-left (dimension 2)
             ax.text(0, -label_offset, dimension_names[2][:4].upper(),
-                    ha='center', va='top', fontsize=8, fontweight='bold')
+                    ha='center', va='top', fontsize=8, fontweight='bold',
+                    color=dim_label_colors[2])
 
             # Bottom-right (dimension 0)
             ax.text(1, -label_offset, dimension_names[0][:4].upper(),
-                    ha='center', va='top', fontsize=8, fontweight='bold')
+                    ha='center', va='top', fontsize=8, fontweight='bold',
+                    color=dim_label_colors[0])
 
             # Top (dimension 1)
             ax.text(0.5, np.sqrt(3)/2 + label_offset, dimension_names[1][:4].upper(),
-                    ha='center', va='bottom', fontsize=8, fontweight='bold')
+                    ha='center', va='bottom', fontsize=8, fontweight='bold',
+                    color=dim_label_colors[1])
 
         if show_grid:
             for i in [2, 4, 6, 8]:
@@ -143,7 +152,7 @@ class ComparisonVisualizer:
 
         if scores.ndim == 1:
             total = scores.sum()
-            return scores / total if total > 0 else np.ones(3) / 3
+            return scores / total if total > 0 else np.ones(len(scores)) / len(scores)
         else:
             totals = scores.sum(axis=1, keepdims=True)
             totals = np.where(totals == 0, 1, totals)
@@ -154,6 +163,7 @@ class ComparisonVisualizer:
         output_path: Optional[Union[str, Path]] = None,
         dimension_names: Optional[List[str]] = None,
         participants: Optional[List[str]] = None,
+        groups: Optional[Dict[str, List[str]]] = None,
         figsize: Optional[Tuple[int, int]] = None,
         max_cols: int = 4,
         marker_size: int = 60,
@@ -171,6 +181,8 @@ class ComparisonVisualizer:
             output_path: Path to save PNG file (optional).
             dimension_names: List of 3 dimension names. Uses loaded if None.
             participants: Specific participants to include. All if None.
+            groups: Optional dict mapping group names to participant ID lists.
+                    When provided, participant titles are colored by group.
             figsize: Figure size. Auto-calculated if None.
             max_cols: Maximum columns in grid.
             marker_size: Size of entity markers.
@@ -197,6 +209,16 @@ class ComparisonVisualizer:
 
         if not pids:
             raise ValueError("No participants to plot")
+
+        # Build pid → group color mapping
+        # Fall back to groups stored on the visualizer instance
+        groups = groups or getattr(self, 'groups', None)
+        pid_to_group_color: Dict[str, str] = {}
+        if groups:
+            for g_idx, (group_name, members) in enumerate(groups.items()):
+                color = self.participant_colors[g_idx % len(self.participant_colors)]
+                for member in members:
+                    pid_to_group_color[member] = color
 
         n_participants = len(pids)
         n_cols = min(max_cols, n_participants)
@@ -255,15 +277,30 @@ class ComparisonVisualizer:
                 except Exception as e:
                     logger.debug(f"Could not compute convex hull for {pid}: {e}")
 
-            # Determine primary dimension colors for each entity
+            # RGB color from dimensional profile + per-entity sizes
             colors = []
-            for score in scores:
-                primary_idx = np.argmax(score)
-                dim_name = dims[primary_idx].lower()
-                colors.append(self.dimension_colors.get(dim_name, '#7f7f7f'))
+            sizes = []
+            mean_scores_per_entity = scores.mean(axis=1)
 
-            # Plot entities
-            ax.scatter(xs, ys, s=marker_size, c=colors,
+            for eidx, score in enumerate(normalized):
+                # Map normalized proportions to RGB channels:
+                #   dims[0] (Social) → Blue, dims[1] (Ecological) → Green, dims[2] (Technological) → Red
+                max_norm = max(score)
+                if max_norm > 0:
+                    s = 0.85 / max_norm
+                    colors.append((
+                        min(1.0, score[2] * s),  # R ← Technological
+                        min(1.0, score[1] * s),  # G ← Ecological
+                        min(1.0, score[0] * s),  # B ← Social
+                    ))
+                else:
+                    colors.append((0.5, 0.5, 0.5))
+                # Size encodes magnitude on absolute 0-100 scale
+                abs_frac = max(0, min(mean_scores_per_entity[eidx] / 100.0, 1.0))
+                sizes.append(marker_size * (0.15 + 2.35 * abs_frac))
+
+            # Plot entities with size encoding magnitude
+            ax.scatter(xs, ys, s=sizes, c=colors,
                       edgecolors='white', linewidths=0.5, alpha=0.7)
 
             # Plot centroid
@@ -281,11 +318,35 @@ class ComparisonVisualizer:
             ax.set_aspect('equal')
             ax.axis('off')
 
-            # Truncate long participant IDs
+            # Truncate long participant IDs, color by group if available
             display_name = pid[:20] + "..." if len(pid) > 20 else pid
-            ax.set_title(f"{display_name}\n(n={len(scores)})", fontsize=9, pad=5)
+            title_color = pid_to_group_color.get(pid, 'black')
+            ax.set_title(f"{display_name}\n(n={len(scores)})", fontsize=9, pad=5,
+                        color=title_color, fontweight='bold' if title_color != 'black' else 'normal')
+
+        # Add group legend if groups are defined
+        if groups and pid_to_group_color:
+            from matplotlib.lines import Line2D
+            group_handles = []
+            for g_idx, (group_name, members) in enumerate(groups.items()):
+                color = self.participant_colors[g_idx % len(self.participant_colors)]
+                group_handles.append(
+                    Line2D([0], [0], marker='s', color='w',
+                           markerfacecolor=color, markersize=10,
+                           markeredgecolor='black', markeredgewidth=0.5,
+                           label=f"{group_name} (n={len(members)})")
+                )
+            fig.legend(
+                handles=group_handles, loc='lower center',
+                ncol=len(groups), fontsize=9, framealpha=0.9,
+                title="Groups", title_fontsize=10,
+                bbox_to_anchor=(0.5, -0.01),
+            )
 
         plt.tight_layout()
+        # Make room for group legend at bottom
+        if groups and pid_to_group_color:
+            fig.subplots_adjust(bottom=0.05)
 
         # Save or return
         if output_path:
@@ -303,6 +364,250 @@ class ComparisonVisualizer:
             return None
 
         return fig
+
+    def generate_individual_ternary(
+        self,
+        output_dir: Union[str, Path],
+        dimension_names: Optional[List[str]] = None,
+        participants: Optional[List[str]] = None,
+        marker_size: int = 80,
+        show_centroid: bool = True,
+        show_convex_hull: bool = False,
+        show_numbers: bool = True,
+    ) -> List[Path]:
+        """
+        Generate individual ternary plot files, one per participant.
+
+        Each plot includes an entity legend sidebar with color-matched
+        circle swatches showing the entity's dimensional RGB blend.
+
+        Args:
+            output_dir: Directory to save individual PNG files.
+            dimension_names: List of 3 dimension names.
+            participants: Specific participants to include. All if None.
+            marker_size: Size of entity markers.
+            show_centroid: Show centroid marker.
+            show_convex_hull: Draw convex hull around entities.
+            show_numbers: If True, show numbered labels on the plot and
+                number-prefixed legend. If False, skip plot labels and
+                sort legend entries by color spectrum (hue).
+
+        Returns:
+            List of saved file paths.
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib import gridspec
+
+        dims = dimension_names or self.comparison.dimension_names
+        if len(dims) != 3:
+            raise ValueError(f"Ternary requires exactly 3 dimensions, got {len(dims)}")
+
+        if participants:
+            pids = [p for p in participants if p in self.comparison.scores_by_participant]
+        else:
+            pids = list(self.comparison.scores_by_participant.keys())
+
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        saved_paths: List[Path] = []
+
+        for pid in pids:
+            scores = self.comparison.scores_by_participant[pid]
+            normalized = self._normalize_scores(scores)
+            n_entities = len(scores)
+
+            # Get entity names for this participant
+            entity_names = self.comparison.entity_names_by_participant.get(pid, [])
+            if not entity_names:
+                entity_names = [f"Entity {i+1}" for i in range(n_entities)]
+
+            # Determine legend panel width based on entity count
+            if n_entities <= 20:
+                legend_ratio = 1.2
+            elif n_entities <= 50:
+                legend_ratio = 1.8
+            else:
+                legend_ratio = 2.5
+
+            fig = plt.figure(figsize=(6 + 3 * legend_ratio / 1.2, 6))
+            gs = gridspec.GridSpec(1, 2, width_ratios=[2.5, legend_ratio], figure=fig)
+            ax = fig.add_subplot(gs[0])
+            legend_ax = fig.add_subplot(gs[1])
+            legend_ax.axis('off')
+
+            # Convert to cartesian
+            xs, ys = [], []
+            for score in normalized:
+                x, y = self._barycentric_to_cartesian(score[1], score[2], score[0])
+                xs.append(x)
+                ys.append(y)
+
+            xs = np.array(xs)
+            ys = np.array(ys)
+
+            # Draw triangle
+            self._draw_triangle(ax, dims, show_labels=True, show_grid=True)
+
+            # Convex hull
+            if show_convex_hull and len(xs) >= 3:
+                try:
+                    from scipy.spatial import ConvexHull
+                    pts = np.column_stack([xs, ys])
+                    hull = ConvexHull(pts)
+                    hull_pts = pts[hull.vertices]
+                    hull_pts = np.vstack([hull_pts, hull_pts[0]])
+                    ax.fill(hull_pts[:, 0], hull_pts[:, 1],
+                           alpha=0.1, color='gray')
+                    ax.plot(hull_pts[:, 0], hull_pts[:, 1],
+                           'k--', alpha=0.3, linewidth=1)
+                except Exception as e:
+                    logger.debug(f"Could not compute convex hull for {pid}: {e}")
+
+            # RGB color + size encoding per entity
+            colors = []
+            sizes = []
+            mean_scores_per_entity = scores.mean(axis=1)
+
+            for eidx, score in enumerate(normalized):
+                max_norm = max(score)
+                if max_norm > 0:
+                    s = 0.85 / max_norm
+                    colors.append((
+                        min(1.0, score[2] * s),
+                        min(1.0, score[1] * s),
+                        min(1.0, score[0] * s),
+                    ))
+                else:
+                    colors.append((0.5, 0.5, 0.5))
+                abs_frac = max(0, min(mean_scores_per_entity[eidx] / 100.0, 1.0))
+                sizes.append(marker_size * (0.15 + 2.35 * abs_frac))
+
+            ax.scatter(xs, ys, s=sizes, c=colors,
+                      edgecolors='black', linewidths=0.8, alpha=0.8)
+
+            # Add numbered labels on the plot (only if show_numbers is True)
+            if show_numbers:
+                base_offset = 0.05
+                placed_labels = []
+                min_separation = 0.04
+
+                for eidx in range(n_entities):
+                    x, y = xs[eidx], ys[eidx]
+                    num = eidx + 1
+
+                    # Find non-colliding position for number label
+                    best_pos = None
+                    for offset_mult in [1.0, 1.5, 2.0, 2.5]:
+                        offset = base_offset * offset_mult
+                        candidates = [
+                            (0, offset, 'center', 'bottom'),
+                            (offset, 0, 'left', 'center'),
+                            (0, -offset, 'center', 'top'),
+                            (-offset, 0, 'right', 'center'),
+                        ]
+                        for dx, dy, ha, va in candidates:
+                            lx, ly = x + dx, y + dy
+                            collision = any(
+                                np.sqrt((lx - px)**2 + (ly - py)**2) < min_separation
+                                for px, py in placed_labels
+                            )
+                            if not collision:
+                                best_pos = (lx, ly, ha, va)
+                                break
+                        if best_pos:
+                            break
+                    if not best_pos:
+                        best_pos = (x, y + base_offset * 2.5, 'center', 'bottom')
+
+                    lx, ly, ha, va = best_pos
+                    placed_labels.append((lx, ly))
+
+                    ax.plot([x, lx], [y, ly], color='gray', linewidth=0.4, alpha=0.5)
+                    ax.text(lx, ly, str(num), fontsize=7, ha='center', va='center',
+                           bbox=dict(boxstyle="circle,pad=0.2", fc="white", ec="gray", alpha=0.8),
+                           zorder=10)
+
+            # Centroid
+            if show_centroid:
+                centroid_scores = self._normalize_scores(scores.mean(axis=0))
+                cx, cy = self._barycentric_to_cartesian(
+                    centroid_scores[1], centroid_scores[2], centroid_scores[0]
+                )
+                ax.scatter([cx], [cy], s=150, c='black', marker='X',
+                          edgecolors='white', linewidths=2, zorder=10)
+
+            ax.set_xlim(-0.1, 1.1)
+            ax.set_ylim(-0.15, np.sqrt(3)/2 + 0.15)
+            ax.set_aspect('equal')
+            ax.axis('off')
+            ax.set_title(f"{pid}\n(n={n_entities})", fontsize=11, pad=10)
+
+            # Subtitle
+            ax.text(
+                0.5, -0.06,
+                "Position: relative proportions | Color: dimensional blend | Size: score magnitude",
+                transform=ax.transAxes, ha='center', va='top',
+                fontsize=7, color='gray', style='italic'
+            )
+
+            # Build entity legend with colored swatches
+            legend_elements = []
+            legend_labels = []
+
+            if show_numbers:
+                # Numbered order
+                order = list(range(n_entities))
+            else:
+                # Sort by hue (color spectrum) for easier visual matching
+                import colorsys
+                hues = []
+                for c in colors:
+                    h, s, v = colorsys.rgb_to_hsv(c[0], c[1], c[2])
+                    hues.append((h, s, v))
+                order = sorted(range(n_entities), key=lambda i: (hues[i][0], -hues[i][1], -hues[i][2]))
+
+            for eidx in order:
+                legend_elements.append(plt.Line2D(
+                    [0], [0], marker='o', color='w',
+                    markerfacecolor=colors[eidx],
+                    markeredgecolor='black', markeredgewidth=0.5,
+                    markersize=8, alpha=0.9
+                ))
+                name = entity_names[eidx] if eidx < len(entity_names) else f"Entity {eidx+1}"
+                if show_numbers:
+                    legend_labels.append(f"{eidx+1}. {name}")
+                else:
+                    legend_labels.append(name)
+
+            # Layout columns based on entity count
+            if n_entities <= 25:
+                ncol, fontsize = 1, 8
+            elif n_entities <= 50:
+                ncol, fontsize = 2, 7
+            else:
+                ncol, fontsize = 3, 6
+
+            legend_ax.legend(
+                legend_elements, legend_labels,
+                loc='center left', fontsize=fontsize,
+                frameon=True, framealpha=0.9,
+                title="Entities", title_fontsize=10,
+                ncol=ncol, handletextpad=0.5,
+                borderpad=0.8, labelspacing=0.4,
+            )
+
+            plt.tight_layout()
+
+            # Sanitize filename
+            safe_name = pid.replace("/", "_").replace("\\", "_").replace(" ", "_")
+            path = output_dir / f"{safe_name}.png"
+            fig.savefig(path, dpi=150, bbox_inches='tight',
+                       facecolor='white', edgecolor='none')
+            plt.close(fig)
+            saved_paths.append(path)
+
+        logger.info(f"Saved {len(saved_paths)} individual ternary plots to {output_dir}")
+        return saved_paths
 
     def generate_overlaid_ternary(
         self,
@@ -397,8 +702,16 @@ class ComparisonVisualizer:
                         entity_positions[entity] = []
                     entity_positions[entity].append((x, y, pid))
 
-            # Plot entities
-            scatter = ax.scatter(xs, ys, s=marker_size, c=[color], alpha=0.6,
+            # Compute per-entity sizes for magnitude encoding (absolute 0-100 scale)
+            scores_raw = self.comparison.scores_by_participant[pid]
+            entity_mean_scores = scores_raw.mean(axis=1)
+            point_sizes = [
+                marker_size * (0.15 + 2.35 * max(0, min(ms / 100.0, 1.0)))
+                for ms in entity_mean_scores
+            ]
+
+            # Plot entities with size encoding magnitude
+            scatter = ax.scatter(xs, ys, s=point_sizes, c=[color], alpha=0.6,
                                edgecolors='white', linewidths=0.5, label=pid)
 
             # Plot centroid
@@ -564,12 +877,12 @@ class ComparisonVisualizer:
 
             # Top dendrogram
             dendro = dendrogram(linkage_matrix, ax=ax_dendro_top, orientation='top',
-                              no_labels=True, color_threshold=0)
+                              no_labels=True)
             ax_dendro_top.axis('off')
 
             # Left dendrogram
             dendrogram(linkage_matrix, ax=ax_dendro_left, orientation='left',
-                      no_labels=True, color_threshold=0)
+                      no_labels=True)
             ax_dendro_left.axis('off')
 
             # Reorder matrix by dendrogram
@@ -647,12 +960,19 @@ class ComparisonVisualizer:
                 if pid in pid_to_group:
                     tick_label.set_color(group_colors[pid_to_group[pid]])
 
-        # Add values to cells
+        # Add values to cells (use perceptual luminance for text contrast)
         if show_values and len(ordered_ids) <= 15:
+            import matplotlib.cm as mcm
+            cmap_obj = mcm.get_cmap(cmap)
+            vmin, vmax = im.get_clim()
             for i in range(len(ordered_ids)):
                 for j in range(len(ordered_ids)):
                     value = ordered_matrix[i, j]
-                    text_color = 'white' if value > ordered_matrix.max() * 0.6 else 'black'
+                    # Map value to colormap RGBA, compute perceptual luminance
+                    norm_val = (value - vmin) / (vmax - vmin) if vmax > vmin else 0.5
+                    rgba = cmap_obj(norm_val)
+                    luminance = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
+                    text_color = 'white' if luminance < 0.5 else 'black'
                     ax_heatmap.text(j, i, f'{value:.2f}',
                                    ha='center', va='center',
                                    color=text_color, fontsize=7)
@@ -693,6 +1013,8 @@ class ComparisonVisualizer:
         ci_level: float = 0.95,
         group_by: str = "dimension",
         title: Optional[str] = None,
+        score_mode: str = "normalized",
+        groups: Optional[Dict[str, List[str]]] = None,
     ):
         """
         Generate forest plot showing per-dimension scores with confidence intervals.
@@ -709,11 +1031,17 @@ class ComparisonVisualizer:
             ci_level: Confidence interval level (default 0.95 = 95% CI).
             group_by: How to organize plot - "dimension" (default) or "participant".
             title: Plot title.
+            score_mode: "normalized" for proportions (sum=1) or "raw" for
+                absolute scores (0-100 scale).
+            groups: Optional dict mapping group names to participant ID lists
+                for coloring labels by group membership.
 
         Returns:
             Matplotlib figure if output_path is None, otherwise None.
         """
         import matplotlib.pyplot as plt
+
+        use_raw = score_mode == "raw"
 
         # Get dimensions
         dims = dimension_names or self.comparison.dimension_names
@@ -730,26 +1058,58 @@ class ComparisonVisualizer:
 
         n_participants = len(pids)
 
+        # Entity count per participant
+        pid_entity_count = {pid: len(self.comparison.scores_by_participant[pid]) for pid in pids}
+
+        # Build group color mapping
+        groups = groups or getattr(self, 'groups', None)
+        group_colors = {}
+        pid_to_group = {}
+        group_boundaries = []  # [(boundary_y_position, ...)] for separator lines
+        if groups:
+            for g_idx, (group_name, members) in enumerate(groups.items()):
+                group_colors[group_name] = self.participant_colors[g_idx % len(self.participant_colors)]
+                for member in members:
+                    pid_to_group[member] = group_name
+
+            # Reorder pids by group membership so group members are adjacent
+            ordered_pids = []
+            for group_name, members in groups.items():
+                group_members = [p for p in pids if p in members]
+                if ordered_pids and group_members:
+                    group_boundaries.append(len(ordered_pids))
+                ordered_pids.extend(group_members)
+            # Append any participants not in any group
+            ungrouped = [p for p in pids if p not in pid_to_group]
+            if ungrouped and ordered_pids:
+                group_boundaries.append(len(ordered_pids))
+            ordered_pids.extend(ungrouped)
+            pids = ordered_pids
+            n_participants = len(pids)
+
         # Compute means and CIs for each participant-dimension pair
-        # Normalize scores compositionally (sum to 1) for meaningful comparison
         stats = {}  # {(pid, dim_idx): (mean, ci_low, ci_high)}
 
         for pid in pids:
             raw_scores = self.comparison.scores_by_participant[pid]  # shape: (n_entities, n_dims)
-            # Normalize each entity's scores to sum to 1
-            scores = self._normalize_scores(raw_scores)
+            if use_raw:
+                scores = raw_scores
+            else:
+                # Normalize each entity's scores to sum to 1
+                scores = self._normalize_scores(raw_scores)
             n_entities = len(scores)
 
             for dim_idx in range(n_dims):
                 dim_scores = scores[:, dim_idx]
                 mean_val = np.mean(dim_scores)
 
-                # Bootstrap confidence interval
+                # Bootstrap confidence interval (seeded for reproducibility)
                 if n_entities >= 2:
                     n_bootstrap = 1000
+                    rng = np.random.default_rng(42)
                     bootstrap_means = []
                     for _ in range(n_bootstrap):
-                        sample = np.random.choice(dim_scores, size=n_entities, replace=True)
+                        sample = rng.choice(dim_scores, size=n_entities, replace=True)
                         bootstrap_means.append(np.mean(sample))
 
                     alpha = 1 - ci_level
@@ -759,16 +1119,32 @@ class ComparisonVisualizer:
                     # Single entity - no CI
                     ci_low = ci_high = mean_val
 
-                # Clamp CIs to valid [0, 1] range for compositional data
-                ci_low = max(0.0, min(1.0, ci_low))
-                ci_high = max(0.0, min(1.0, ci_high))
+                if use_raw:
+                    ci_low = max(0.0, min(100.0, ci_low))
+                    ci_high = max(0.0, min(100.0, ci_high))
+                else:
+                    ci_low = max(0.0, min(1.0, ci_low))
+                    ci_high = max(0.0, min(1.0, ci_high))
 
                 stats[(pid, dim_idx)] = (mean_val, ci_low, ci_high)
 
-        # Create figure
+        # Axis configuration based on score mode
+        if use_raw:
+            x_label = 'Score'
+            x_lim = (0, 100)
+            ref_line_x = 50
+            subtitle_text = "Raw scores (0–100 scale) | Dashed line = midpoint (50)"
+        else:
+            x_label = 'Proportion'
+            x_lim = (0, 1)
+            ref_line_x = 1 / n_dims
+            subtitle_text = "Scores normalized to proportions (sum = 1) | Dashed line = equal distribution"
+
+        # Create figure (scale height with number of participants/rows)
         if group_by == "dimension":
             # One subplot per dimension, participants on y-axis
-            fig, axes = plt.subplots(1, n_dims, figsize=figsize, sharey=True)
+            scaled_height = max(figsize[1], 0.4 * n_participants + 2)
+            fig, axes = plt.subplots(1, n_dims, figsize=(figsize[0], scaled_height), sharey=True)
             if n_dims == 1:
                 axes = [axes]
 
@@ -806,23 +1182,38 @@ class ComparisonVisualizer:
                     linewidth=1.5
                 )
 
-                ax.set_xlabel('Score', fontsize=10)
+                ax.set_xlabel(x_label, fontsize=10)
                 ax.set_title(dim_name.capitalize(), fontsize=11, fontweight='bold')
-                ax.set_xlim(0, 1)
-                ax.axvline(x=1/n_dims, color='gray', linestyle='--', alpha=0.5, label='Equal')
+                ax.set_xlim(*x_lim)
+                ax.axvline(x=ref_line_x, color='gray', linestyle='--', alpha=0.5)
                 ax.grid(axis='x', alpha=0.3)
+
+                # Add group separator lines
+                if groups and group_boundaries:
+                    for boundary in group_boundaries:
+                        ax.axhline(y=boundary - 0.5, color='gray', linestyle='--',
+                                   alpha=0.5, linewidth=1.0)
 
                 if dim_idx == 0:
                     ax.set_yticks(y_positions)
-                    # Truncate long labels
-                    y_labels = [pid[:20] + "..." if len(pid) > 20 else pid for pid in pids]
-                    ax.set_yticklabels(y_labels, fontsize=9)
+                    y_labels = [f"{pid}  (n={pid_entity_count[pid]})" for pid in pids]
+                    label_fontsize = 8 if max(len(p) for p in pids) > 20 else 9
+                    ax.set_yticklabels(y_labels, fontsize=label_fontsize)
+                    # Color labels by group membership
+                    if groups and pid_to_group:
+                        for tick_label in ax.get_yticklabels():
+                            # Extract pid from label (before the "  (n=" part)
+                            pid_text = tick_label.get_text().split("  (n=")[0]
+                            if pid_text in pid_to_group:
+                                tick_label.set_color(group_colors[pid_to_group[pid_text]])
+                                tick_label.set_fontweight('bold')
 
         else:
             # group_by == "participant": One subplot per participant, dimensions on y-axis
             n_cols = min(3, n_participants)
             n_rows = (n_participants + n_cols - 1) // n_cols
-            fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=True, sharey=True)
+            scaled_height = max(figsize[1], 2.5 * n_rows)
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(figsize[0], scaled_height), sharex=True, sharey=True)
             axes = np.array(axes).flatten()
 
             for pid_idx, pid in enumerate(pids):
@@ -859,10 +1250,15 @@ class ComparisonVisualizer:
                         linewidth=1.5
                     )
 
-                ax.set_xlim(0, 1)
-                ax.axvline(x=1/n_dims, color='gray', linestyle='--', alpha=0.5)
+                ax.set_xlim(*x_lim)
+                ax.axvline(x=ref_line_x, color='gray', linestyle='--', alpha=0.5)
                 ax.grid(axis='x', alpha=0.3)
-                ax.set_title(pid[:25] + "..." if len(pid) > 25 else pid, fontsize=10)
+                title_color = 'black'
+                if groups and pid in pid_to_group:
+                    title_color = group_colors[pid_to_group[pid]]
+                ax.set_title(f"{pid}\n(n={pid_entity_count[pid]})", fontsize=10,
+                             color=title_color,
+                             fontweight='bold' if title_color != 'black' else 'normal')
 
                 if pid_idx % n_cols == 0:
                     ax.set_yticks(y_positions)
@@ -870,16 +1266,43 @@ class ComparisonVisualizer:
                     ax.set_yticklabels(y_labels, fontsize=9)
 
                 if pid_idx >= (n_rows - 1) * n_cols:
-                    ax.set_xlabel('Score', fontsize=10)
+                    ax.set_xlabel(x_label, fontsize=10)
 
             # Hide unused subplots
             for idx in range(n_participants, len(axes)):
                 axes[idx].axis('off')
 
-        # Overall title
-        plot_title = title or f"Dimension Scores by Participant ({int(ci_level*100)}% CI)"
-        fig.suptitle(plot_title, fontsize=12, fontweight='bold', y=1.02)
+        # Overall title with subtitle
+        if title:
+            plot_title = title
+        elif use_raw:
+            plot_title = f"Dimension Scores by Participant — Raw ({int(ci_level*100)}% CI)"
+        else:
+            plot_title = f"Dimension Scores by Participant — Proportions ({int(ci_level*100)}% CI)"
+        fig.suptitle(plot_title, fontsize=12, fontweight='bold', y=1.04)
+        fig.text(0.5, 1.01, subtitle_text,
+                 ha='center', va='top', fontsize=9, color='gray', style='italic',
+                 transform=fig.transFigure)
         plt.tight_layout()
+
+        # Add group legend if groups are defined
+        if groups and pid_to_group:
+            from matplotlib.lines import Line2D
+            group_handles = []
+            for g_idx, (group_name, members) in enumerate(groups.items()):
+                group_handles.append(
+                    Line2D([0], [0], marker='s', color='w',
+                           markerfacecolor=group_colors[group_name], markersize=10,
+                           markeredgecolor='black', markeredgewidth=0.5,
+                           label=f"{group_name} (n={len(members)})")
+                )
+            fig.legend(
+                handles=group_handles, loc='lower center',
+                ncol=len(groups), fontsize=9, framealpha=0.9,
+                title="Groups", title_fontsize=10,
+                bbox_to_anchor=(0.5, -0.06),
+            )
+            fig.subplots_adjust(bottom=0.12)
 
         # Save or return
         if output_path:
@@ -893,7 +1316,7 @@ class ComparisonVisualizer:
                 edgecolor='none'
             )
             plt.close(fig)
-            logger.info(f"Saved forest plot to {output_path}")
+            logger.info(f"Saved forest plot ({score_mode}) to {output_path}")
             return None
 
         return fig
@@ -952,9 +1375,11 @@ class ComparisonVisualizer:
                 embedding = reducer.fit_transform(result.distance_matrix)
             except ImportError:
                 logger.warning("UMAP not available, falling back to MDS")
+                print("  Warning: UMAP not installed, falling back to MDS. Install umap-learn for UMAP support.")
                 actual_method = "mds"
             except Exception as e:
                 logger.warning(f"UMAP failed ({e}), falling back to MDS")
+                print(f"  Warning: UMAP failed ({e}), falling back to MDS.")
                 actual_method = "mds"
 
         if actual_method == "mds":
@@ -1005,13 +1430,44 @@ class ComparisonVisualizer:
                 zorder=2
             )
 
-            if show_labels:
-                # Truncate long labels
-                label = pid[:15] + "..." if len(pid) > 15 else pid
+        # Add labels with collision avoidance
+        if show_labels:
+            placed_labels = []
+            # Compute data-space separation threshold from embedding range
+            x_range = embedding[:, 0].max() - embedding[:, 0].min() if n > 1 else 1.0
+            y_range = embedding[:, 1].max() - embedding[:, 1].min() if n > 1 else 1.0
+            min_sep = max(x_range, y_range) * 0.04
+
+            for i, pid in enumerate(result.participant_ids):
+                label = pid[:20] + "..." if len(pid) > 20 else pid
+                px, py = embedding[i, 0], embedding[i, 1]
+
+                # Try multiple offset directions to avoid overlap
+                offset_pts = [(8, 8), (-8, 8), (8, -8), (-8, -8),
+                              (12, 0), (-12, 0), (0, 12), (0, -12)]
+                best_offset = offset_pts[0]
+                best_min_dist = -1
+
+                for ox, oy in offset_pts:
+                    # Approximate label position in data coords
+                    lx = px + ox * x_range / 300
+                    ly = py + oy * y_range / 300
+                    if placed_labels:
+                        dists = [np.sqrt((lx - plx)**2 + (ly - ply)**2)
+                                 for plx, ply in placed_labels]
+                        min_dist = min(dists)
+                    else:
+                        min_dist = float('inf')
+                    if min_dist > best_min_dist:
+                        best_min_dist = min_dist
+                        best_offset = (ox, oy)
+
+                placed_labels.append((px + best_offset[0] * x_range / 300,
+                                      py + best_offset[1] * y_range / 300))
                 ax.annotate(
                     label,
-                    (embedding[i, 0], embedding[i, 1]),
-                    xytext=(5, 5),
+                    (px, py),
+                    xytext=best_offset,
                     textcoords='offset points',
                     fontsize=9,
                     alpha=0.8,

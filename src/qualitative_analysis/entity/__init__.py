@@ -71,6 +71,12 @@ from qualitative_analysis.entity.clustering import (
     pca_on_scores,
 )
 
+# Entity detection
+from qualitative_analysis.entity.detector import (
+    EntityDetector,
+    EntityDetectionResult,
+)
+
 # HDBSCAN (optional — requires hdbscan package)
 try:
     from qualitative_analysis.entity.clustering import cluster_hdbscan
@@ -131,6 +137,9 @@ __all__ = [
     "cluster_hierarchical",
     "cluster_kmeans",
     "pca_on_scores",
+    # Detection
+    "EntityDetector",
+    "EntityDetectionResult",
 ]
 
 # Conditionally add HDBSCAN if available

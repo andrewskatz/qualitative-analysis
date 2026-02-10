@@ -161,7 +161,9 @@ def _add_relationships_commands(
         "relationships",
         aliases=["rel"],
         help="Entity-relationship extraction and analysis",
-        description="Extract, normalize, and analyze relationships between entities in text.",
+        description="Extract and analyze relationships between entities in text.\n\n"
+                    "Recommended pipeline order:\n"
+                    "  detect → verify → causal → normalize → graph",
     )
 
     rel_subs = rel_parser.add_subparsers(
@@ -222,6 +224,8 @@ def _add_entity_commands(
 ) -> None:
     """Add entity analysis subcommands."""
     from qualitative_analysis.entity_cli import (
+        add_entity_detect_args,
+        run_entity_detect,
         add_entity_score_args,
         run_entity_score,
         add_entity_consolidate_args,
@@ -255,6 +259,15 @@ def _add_entity_commands(
         description="Available entity commands",
         metavar="ACTION",
     )
+
+    # detect subcommand
+    detect_parser = entity_subs.add_parser(
+        "detect",
+        help="Detect entities in text",
+        description="Extract entities from text using LLM analysis. Outputs CSV ready for 'qa entity score'.",
+    )
+    add_entity_detect_args(detect_parser)
+    detect_parser.set_defaults(func=lambda args: asyncio.run(run_entity_detect(args)))
 
     # score subcommand
     score_parser = entity_subs.add_parser(

@@ -65,6 +65,7 @@ class CausalAnalyzer:
             temperature: LLM temperature for generation.
         """
         self.temperature = temperature
+        self._is_default_prompt = (prompt_template is None)
 
         if prompt_template:
             self._prompt_template = prompt_template
@@ -204,7 +205,7 @@ Return JSON with reasoning first: {{"reasoning": "...", "is_causal": bool, "pola
                 logger.error(f"Error analyzing {source} -> {target}: {e}")
                 stats["errors"] += 1
 
-                # Create relationship with null causal attributes
+                # Create relationship with error status — NOT counted as non-causal
                 causal_rel = CausalRelationship(
                     source=source,
                     target=target,
@@ -219,7 +220,6 @@ Return JSON with reasoning first: {{"reasoning": "...", "is_causal": bool, "pola
                     ),
                 )
                 causal_relationships.append(causal_rel)
-                stats["non_causal_count"] += 1
 
             # Progress callback
             if on_progress and (i + 1) % batch_size == 0:
@@ -233,7 +233,7 @@ Return JSON with reasoning first: {{"reasoning": "...", "is_causal": bool, "pola
         config = {
             "temperature": self.temperature,
             "max_evidence": max_evidence,
-            "prompt_template": "default" if self._prompt_template == self._load_default_prompt() else "custom",
+            "prompt_template": "default" if self._is_default_prompt else "custom",
         }
 
         logger.info(
@@ -348,12 +348,15 @@ Return JSON with reasoning first: {{"reasoning": "...", "is_causal": bool, "pola
             certainty = result.get("certainty")
             explicit_vs_implicit = result.get("explicit_vs_implicit")
 
-            # Validate values
+            # Validate values — log when defaulting from invalid LLM output
             if polarity not in VALID_POLARITIES:
+                logger.warning(f"Invalid polarity '{polarity}', defaulting to 'neutral'")
                 polarity = "neutral"
             if certainty not in VALID_CERTAINTIES:
+                logger.warning(f"Invalid certainty '{certainty}', defaulting to 'possible'")
                 certainty = "possible"
             if explicit_vs_implicit not in VALID_EXPLICIT_IMPLICIT:
+                logger.warning(f"Invalid explicit_vs_implicit '{explicit_vs_implicit}', defaulting to 'implicit'")
                 explicit_vs_implicit = "implicit"
         else:
             polarity = None

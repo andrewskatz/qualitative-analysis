@@ -155,35 +155,48 @@ class EntityVisualizer:
             dim_values = entity_data['normalized_scores']
 
             # Convert to cartesian coordinates
-            # Map: [0] = bottom-left, [1] = bottom-right, [2] = top
+            # Map: dim[0] → bottom-right, dim[1] → top, dim[2] → bottom-left
+            # This matches the vertex labels in _draw_triangle
             x, y = self._barycentric_to_cartesian(
-                dim_values[2],  # top vertex
-                dim_values[0],  # bottom-left
-                dim_values[1]   # bottom-right
+                dim_values[1],  # top vertex
+                dim_values[2],  # bottom-left vertex
+                dim_values[0]   # bottom-right vertex
             )
 
-            # Determine primary dimension (highest score)
-            raw_scores = entity_data['raw_scores']
-            primary_dim = max(
-                [(dim, raw_scores[i]) for i, dim in enumerate(dimension_names)],
-                key=lambda x: x[1]
-            )[0]
+            # RGB color from dimensional profile
+            # Map normalized proportions to color channels:
+            #   Social → Blue, Ecological → Green, Technological → Red
+            # Brighten so dominant channel reaches ~0.85 for visibility
+            norm = entity_data['normalized_scores']
+            max_norm = max(norm)
+            if max_norm > 0:
+                scale = 0.85 / max_norm
+                color = (
+                    min(1.0, norm[2] * scale),  # R ← Technological
+                    min(1.0, norm[1] * scale),  # G ← Ecological
+                    min(1.0, norm[0] * scale),  # B ← Social
+                )
+            else:
+                color = (0.5, 0.5, 0.5)
 
-            # Get color
-            color = self.dimension_colors.get(primary_dim.lower(), "#7f7f7f")
-
-            # Calculate opacity based on uncertainty
+            # Calculate opacity based on uncertainty (CV)
+            # Linear mapping: CV=0 → alpha=0.95, CV=1 → alpha=0.3
             alpha = 0.8
             if uncertainty_style == "opacity":
                 cv = entity_data.get('avg_cv', 0)
-                if cv > 0:
-                    # Map CV to opacity: low CV = high opacity
-                    alpha = max(0.3, min(0.95, 0.95 - (cv * 2)))
+                alpha = max(0.3, 0.95 - 0.65 * min(cv, 1.0))
+
+            # Calculate marker size based on mean score (magnitude encoding)
+            # Use absolute 0-100 scale so size is meaningful across plots
+            # Scale from marker_size * 0.15 (score=0) to marker_size * 2.5 (score=100)
+            mean_score = entity_data['mean_score']
+            abs_fraction = max(0, min(mean_score / 100.0, 1.0))
+            point_size = marker_size * (0.15 + 2.35 * abs_fraction)
 
             # Plot the point
             ax.scatter(
                 x, y,
-                s=marker_size,
+                s=point_size,
                 c=[color],
                 edgecolors='black',
                 alpha=alpha,
@@ -196,6 +209,8 @@ class EntityVisualizer:
                 'y': y,
                 'color': color,
                 'alpha': alpha,
+                'size': point_size,
+                'mean_score': mean_score,
                 'index': idx
             })
 
@@ -214,10 +229,24 @@ class EntityVisualizer:
         # Add dimension legend
         self._add_dimension_legend(ax, dimension_names)
 
+        # Add size legend showing magnitude encoding
+        self._add_size_legend(ax, marker_size)
+
         # Configure plot
         ax.set_aspect('equal')
         ax.set_axis_off()
-        plt.title(title, fontsize=14, pad=20)
+        ax.set_title(title, fontsize=14, pad=20)
+
+        # Add subtitle explaining visual encoding
+        subtitle_parts = ["Position: relative proportions", "Color: dimensional blend (RGB)", "Size: score magnitude"]
+        if uncertainty_style == "opacity":
+            subtitle_parts.append("Opacity: confidence")
+        ax.text(
+            0.5, -0.08, " | ".join(subtitle_parts),
+            transform=ax.transAxes, ha='center', va='top',
+            fontsize=9, color='gray', style='italic'
+        )
+
         plt.tight_layout()
 
         # Save or return
@@ -406,20 +435,24 @@ class EntityVisualizer:
                 raw_scores.append(score if score is not None else 50)
                 cv_values.append(cv if cv else 0)
 
-            # Normalize scores to sum to 1
+            # Normalize scores to sum to 1 for ternary position
             total = sum(raw_scores)
             if total > 0:
                 normalized = [s / total for s in raw_scores]
             else:
                 normalized = [1.0 / len(dimension_names)] * len(dimension_names)
 
-            # Average CV for uncertainty visualization
+            # Mean raw score for magnitude encoding (point size)
+            mean_score = np.mean(raw_scores)
+
+            # Average CV for uncertainty visualization (opacity)
             avg_cv = np.mean(cv_values) if cv_values else 0
 
             prepared.append({
                 'entity': entity,
                 'raw_scores': raw_scores,
                 'normalized_scores': normalized,
+                'mean_score': mean_score,
                 'avg_cv': avg_cv
             })
 
@@ -470,23 +503,32 @@ class EntityVisualizer:
         ax.plot(vertices[:, 0], vertices[:, 1], 'k-', linewidth=2)
 
         # Dimension labels at corners
+        # RGB channel colors: dim[0]=Social→Blue, dim[1]=Ecological→Green, dim[2]=Technological→Red
+        dim_label_colors = [
+            (0.0, 0.0, 0.85),   # dim[0] Social → Blue
+            (0.0, 0.60, 0.0),   # dim[1] Ecological → Green (darker for readability)
+            (0.85, 0.0, 0.0),   # dim[2] Technological → Red
+        ]
         label_offset = 0.08
 
         # Bottom-left (dimension 2 - typically Technological)
         ax.text(0, -label_offset, dimension_names[2].capitalize(),
-                ha='center', va='top', fontsize=12, fontweight='bold')
+                ha='center', va='top', fontsize=12, fontweight='bold',
+                color=dim_label_colors[2])
         ax.text(0, -label_offset - 0.03, '(100%)',
                 ha='center', va='top', fontsize=9, color='gray')
 
         # Bottom-right (dimension 0 - typically Social)
         ax.text(1, -label_offset, dimension_names[0].capitalize(),
-                ha='center', va='top', fontsize=12, fontweight='bold')
+                ha='center', va='top', fontsize=12, fontweight='bold',
+                color=dim_label_colors[0])
         ax.text(1, -label_offset - 0.03, '(100%)',
                 ha='center', va='top', fontsize=9, color='gray')
 
         # Top (dimension 1 - typically Ecological)
         ax.text(0.5, np.sqrt(3)/2 + label_offset, dimension_names[1].capitalize(),
-                ha='center', va='bottom', fontsize=12, fontweight='bold')
+                ha='center', va='bottom', fontsize=12, fontweight='bold',
+                color=dim_label_colors[1])
         ax.text(0.5, np.sqrt(3)/2 + label_offset + 0.03, '(100%)',
                 ha='center', va='bottom', fontsize=9, color='gray')
 
@@ -658,18 +700,61 @@ class EntityVisualizer:
         ax: plt.Axes,
         dimension_names: List[str]
     ) -> None:
-        """Add a legend showing dimension colors."""
-        legend_elements = []
+        """Add a legend showing dimension-to-RGB color mapping."""
+        # RGB corner colors: each dimension maps to one channel
+        # Order matches dimension_names: [0]=Social→Blue, [1]=Ecological→Green, [2]=Technological→Red
+        rgb_corners = [
+            (0.0, 0.0, 0.85),   # Social → Blue
+            (0.0, 0.85, 0.0),   # Ecological → Green
+            (0.85, 0.0, 0.0),   # Technological → Red
+        ]
 
-        for dim in dimension_names:
-            color = self.dimension_colors.get(dim.lower(), "#7f7f7f")
+        legend_elements = []
+        for i, dim in enumerate(dimension_names):
             legend_elements.append(
                 plt.Line2D(
                     [0], [0], marker='o', color='w',
-                    markerfacecolor=color, markersize=10,
+                    markerfacecolor=rgb_corners[i], markersize=10,
                     markeredgecolor='black', markeredgewidth=1,
-                    label=f"{dim.capitalize()} (primary)"
+                    label=f"{dim.capitalize()}"
                 )
             )
 
-        ax.legend(handles=legend_elements, loc='upper right', framealpha=0.9, fontsize=10)
+        # Add as first legend, then use add_artist so size legend can coexist
+        dim_legend = ax.legend(
+            handles=legend_elements, loc='upper right', framealpha=0.9, fontsize=10,
+            title="Color channels", title_fontsize=9
+        )
+        ax.add_artist(dim_legend)
+
+    def _add_size_legend(
+        self,
+        ax: plt.Axes,
+        base_marker_size: int
+    ) -> None:
+        """Add a legend showing point size to mean score mapping."""
+        # Show 3 reference sizes on the absolute 0-100 scale
+        levels = [
+            (25, "25"),
+            (50, "50"),
+            (75, "75"),
+        ]
+
+        legend_elements = []
+        for score_val, label in levels:
+            abs_fraction = score_val / 100.0
+            size = base_marker_size * (0.15 + 2.35 * abs_fraction)
+            legend_elements.append(
+                plt.scatter(
+                    [], [], s=size, c='gray', edgecolors='black',
+                    linewidths=0.5, alpha=0.6,
+                    label=label
+                )
+            )
+
+        ax.legend(
+            handles=legend_elements, loc='lower right',
+            title="Mean Score", title_fontsize=9,
+            fontsize=8, framealpha=0.9,
+            labelspacing=1.5, borderpad=1.0
+        )

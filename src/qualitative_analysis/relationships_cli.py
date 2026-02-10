@@ -15,7 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from qualitative_analysis.core.cli_utils import emit_deprecation_warning
+from qualitative_analysis.core.cli_utils import (
+    add_common_csv_args,
+    add_common_llm_args,
+    add_common_windowing_args,
+    emit_deprecation_warning,
+    PACKAGE_VERSION,
+)
+from qualitative_analysis.core.providers import OllamaProvider
 from qualitative_analysis.relationships.detector import RelationshipDetector
 from qualitative_analysis.relationships.models import Relationship
 from qualitative_analysis.relationships.normalizer import RelationshipNormalizer
@@ -66,16 +73,26 @@ def _parse_entities(raw_value: str | None) -> List[str]:
 def add_relationships_detect_args(parser: argparse.ArgumentParser) -> None:
     """
     Add relationship detection arguments to a parser.
-    
+
     This is used by both the standalone CLI and the unified CLI.
     """
-    parser.add_argument("input_csv", help="Path to input CSV file.")
-    parser.add_argument("--id-col", default=None, help="Column name for IDs (optional).")
-    parser.add_argument("--text-col", default="text", help="Column name for text.")
+    # Shared CSV args: input_csv, --text-col, --id-col
+    add_common_csv_args(parser)
+    # Shared LLM args: --model, --base-url, --timeout, --log-llm
+    add_common_llm_args(parser)
+    # Shared windowing args: --window-size, --stride, --chunk-unit, --tokenizer, --no-windowing
+    add_common_windowing_args(parser)
+
+    # Relationship-specific args
     parser.add_argument(
         "--entities-col",
         default=None,
         help="Column name for pre-identified entities (optional).",
+    )
+    parser.add_argument(
+        "--group-col",
+        default=None,
+        help="Column name for group assignments (e.g., treatment vs control).",
     )
     parser.add_argument(
         "--output",
@@ -91,7 +108,7 @@ def add_relationships_detect_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Output directory (default: output/).",
+        help="Output directory (default: output/ alongside input file).",
     )
     parser.add_argument(
         "--strategy",
@@ -99,31 +116,25 @@ def add_relationships_detect_args(parser: argparse.ArgumentParser) -> None:
         choices=["two_pass", "one_pass"],
         help="Relationship extraction strategy (default: two_pass).",
     )
-    parser.add_argument("--model", default="qwen3:30b-a3b-instruct-2507-q4_K_M", help="Ollama model name.")
     parser.add_argument(
-        "--base-url",
-        default="http://localhost:11434",
-        help="Ollama base URL.",
+        "--provider",
+        default="ollama",
+        choices=["ollama"],
+        help="LLM provider (default: ollama).",
     )
     parser.add_argument(
-        "--log-llm",
-        action="store_true",
-        help="Print LLM prompts and responses to the terminal.",
-    )
-    parser.add_argument("--timeout", type=float, default=60.0, help="HTTP timeout seconds.")
-    parser.add_argument("--window-size", type=int, default=3, help="Sliding window size.")
-    parser.add_argument("--stride", type=int, default=2, help="Sliding window stride.")
-    parser.add_argument(
-        "--chunk-unit",
-        default="sentences",
-        choices=["sentences", "tokens"],
-        help="Chunking unit for windowing (sentences or tokens).",
+        "--temperature",
+        type=float,
+        default=0.1,
+        help="LLM temperature (default: 0.1).",
     )
     parser.add_argument(
-        "--tokenizer",
-        default="cl100k_base",
-        help="Tokenizer name for token chunking (tiktoken encoding).",
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit to first N texts (for testing).",
     )
+    # Summary args
     parser.add_argument(
         "--summary-buffer-size",
         type=int,
@@ -152,11 +163,7 @@ def add_relationships_detect_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Include window summaries in relationship prompts.",
     )
-    parser.add_argument(
-        "--no-windowing",
-        action="store_true",
-        help="Disable windowing and analyze each text as a single window.",
-    )
+    # Prompt version args
     parser.add_argument(
         "--prompt-version",
         type=int,
@@ -166,8 +173,8 @@ def add_relationships_detect_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--entity-prompt-version",
         type=int,
-        default=3,
-        help="Entity extraction prompt version (two-pass only).",
+        default=1,
+        help="Entity extraction prompt version (two-pass only, default: 1).",
     )
     parser.add_argument(
         "--context-buffer-size",
@@ -201,9 +208,8 @@ def _resolve_output_dir(input_path: Path, output_dir: str | None) -> Path:
     if output_dir:
         path = Path(output_dir)
     else:
-        # Default to 'output' directory in the package root (qualitative-analysis/)
-        # From relationships_cli.py: parent=qualitative_analysis, parent.parent=src, parent.parent.parent=qualitative-analysis
-        path = Path(__file__).parent.parent.parent / "output"
+        # Default to 'output' subdirectory next to the input file
+        path = input_path.parent / "output"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -218,25 +224,27 @@ def _writer(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, Any]:
 async def run_relationships_detect(args: argparse.Namespace) -> int:
     """
     Run relationship detection with the given arguments.
-    
+
     This is the main detection logic, callable from both standalone and unified CLI.
-    
+
     Args:
         args: Parsed arguments namespace with detection configuration
-    
+
     Returns:
         Exit code (0 for success)
     """
+    start_time = datetime.now()
+
     if args.prompt_version is None:
         args.prompt_version = 1 if args.strategy == "two_pass" else 2
-    if args.no_summaries and args.include_summaries:
+    if args.no_summaries and getattr(args, "include_summaries", False):
         args.include_summaries = False
     input_path = Path(args.input_csv)
     if not input_path.exists():
         raise SystemExit(f"Input CSV not found: {input_path}")
 
     # Handle --no-windows flag
-    if getattr(args, 'no_windows', False):
+    if getattr(args, "no_windows", False):
         args.output = "summary+relationships"
 
     output_selection = _parse_output_selection(args.output)
@@ -257,15 +265,22 @@ async def run_relationships_detect(args: argparse.Namespace) -> int:
         window_size = 1_000_000
         stride = 1_000_000
 
+    # Build LLM provider in CLI (DI pattern)
+    provider = getattr(args, "provider", "ollama")
+    if provider == "ollama":
+        llm_provider = OllamaProvider(
+            model_name=args.model,
+            base_url=args.base_url,
+            timeout=getattr(args, "timeout", 60.0),
+            temperature=getattr(args, "temperature", 0.1),
+            log_prompts=args.log_llm,
+            log_responses=args.log_llm,
+        )
+    else:
+        raise SystemExit(f"Provider '{provider}' not yet supported. Use 'ollama'.")
+
     detector = RelationshipDetector(
-        model_name=args.model,
-        provider="ollama",
-        provider_config={
-            "base_url": args.base_url,
-            "timeout": args.timeout,
-            "log_prompts": args.log_llm,
-            "log_responses": args.log_llm,
-        },
+        llm_provider=llm_provider,
         strategy=args.strategy,
         prompt_version=args.prompt_version,
         entity_prompt_version=args.entity_prompt_version,
@@ -278,12 +293,71 @@ async def run_relationships_detect(args: argparse.Namespace) -> int:
         summary_buffer_size=args.summary_buffer_size,
         summary_prompt_version=args.summary_prompt_version,
         enable_summaries=not args.no_summaries,
-        include_summaries_in_prompt=args.include_summaries,
+        include_summaries_in_prompt=getattr(args, "include_summaries", False),
         summary_min_windows=args.summary_min_windows,
         return_windows=write_windows,
         context_buffer_size=args.context_buffer_size,
         coref_resolution=args.coref,
     )
+
+    # Read all rows into memory so we can show progress as (N/M)
+    with input_path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames:
+            raise SystemExit("Input CSV has no headers.")
+
+        if args.text_col not in reader.fieldnames:
+            raise SystemExit(
+                f"Text column '{args.text_col}' not found in CSV headers: {reader.fieldnames}"
+            )
+        if args.id_col and args.id_col not in reader.fieldnames:
+            raise SystemExit(
+                f"ID column '{args.id_col}' not found in CSV headers: {reader.fieldnames}"
+            )
+        if getattr(args, "entities_col", None) and args.entities_col not in reader.fieldnames:
+            raise SystemExit(
+                f"Entities column '{args.entities_col}' not found in CSV headers: {reader.fieldnames}"
+            )
+        group_col = getattr(args, "group_col", None)
+        if group_col and group_col not in reader.fieldnames:
+            raise SystemExit(
+                f"Group column '{group_col}' not found in CSV headers: {reader.fieldnames}"
+            )
+
+        rows = list(reader)
+
+    # Apply --limit
+    if getattr(args, "limit", None):
+        rows = rows[: args.limit]
+
+    # Build group mapping
+    text_id_to_group: Dict[str, str] = {}
+    if group_col:
+        for i, row in enumerate(rows, start=1):
+            tid = row.get(args.id_col) if args.id_col else str(i)
+            text_id_to_group[tid] = row.get(group_col, "")
+        groups = set(text_id_to_group.values()) - {""}
+        if groups:
+            print(f"Found {len(groups)} groups: {', '.join(sorted(groups))}")
+
+    print(f"Processing {len(rows)} texts with strategy={args.strategy}...")
+
+    # Determine CSV fieldnames (add group column if present)
+    summary_fields = [
+        "text_id", "text", "entity_count", "relationship_count",
+        "window_count", "entities_json", "strategy", "error",
+    ]
+    edge_fields = [
+        "text_id", "window_index", "source", "target", "type", "description",
+    ]
+    window_fields = [
+        "text_id", "window_index", "window_text", "summary",
+        "relationship_count", "entities_json", "relationships_json",
+    ]
+    if group_col:
+        summary_fields.insert(1, "group")
+        edge_fields.insert(1, "group")
+        window_fields.insert(1, "group")
 
     summary_writer = None
     summary_handle = None
@@ -294,138 +368,152 @@ async def run_relationships_detect(args: argparse.Namespace) -> int:
 
     if write_summary:
         summary_path = run_dir / f"{output_prefix}_summary_{timestamp}.csv"
-        summary_writer, summary_handle = _writer(
-            summary_path,
-            [
-                "text_id",
-                "text",
-                "entity_count",
-                "relationship_count",
-                "window_count",
-                "entities_json",
-                "strategy",
-                "error",
-            ],
-        )
+        summary_writer, summary_handle = _writer(summary_path, summary_fields)
 
     if write_relationships:
         relationships_path = run_dir / f"{output_prefix}_edges_{timestamp}.csv"
-        relationships_writer, relationships_handle = _writer(
-            relationships_path,
-            [
-                "text_id",
-                "window_index",
-                "source",
-                "target",
-                "type",
-                "description",
-            ],
-        )
+        relationships_writer, relationships_handle = _writer(relationships_path, edge_fields)
 
     if write_windows:
         windows_path = run_dir / f"{output_prefix}_windows_{timestamp}.csv"
-        windows_writer, windows_handle = _writer(
-            windows_path,
-            [
-                "text_id",
-                "window_index",
-                "window_text",
-                "summary",
-                "relationship_count",
-                "entities_json",
-                "relationships_json",
-            ],
-        )
+        windows_writer, windows_handle = _writer(windows_path, window_fields)
+
+    # Accumulators for metadata
+    total_relationships = 0
+    all_unique_entities: set[str] = set()
+    errors = 0
 
     try:
-        with input_path.open("r", newline="", encoding="utf-8") as handle:
-            reader = csv.DictReader(handle)
-            if not reader.fieldnames:
-                raise SystemExit("Input CSV has no headers.")
+        for i, row in enumerate(rows, start=1):
+            text_id = row.get(args.id_col) if args.id_col else str(i)
+            text = row.get(args.text_col) or ""
+            group = text_id_to_group.get(text_id, "") if group_col else ""
+            entities_input = (
+                _parse_entities(row.get(args.entities_col))
+                if getattr(args, "entities_col", None)
+                else []
+            )
 
-            if args.text_col not in reader.fieldnames:
-                raise SystemExit(
-                    f"Text column '{args.text_col}' not found in CSV headers: {reader.fieldnames}"
+            error = ""
+            result = None
+            try:
+                result = await detector.detect(
+                    text,
+                    current_entities=entities_input,
+                    text_id=text_id,
                 )
+            except Exception as exc:
+                error = str(exc)
+                errors += 1
 
-            if args.id_col and args.id_col not in reader.fieldnames:
-                raise SystemExit(
-                    f"ID column '{args.id_col}' not found in CSV headers: {reader.fieldnames}"
-                )
+            if result:
+                rel_count = result.metadata.get("relationship_count", 0)
+                ent_count = result.metadata.get("entity_count", 0)
+                total_relationships += rel_count
+                all_unique_entities.update(e.lower() for e in result.entities)
+                print(f"Processing {text_id} ({i}/{len(rows)})... "
+                      f"found {ent_count} entities, {rel_count} relationships")
+            else:
+                print(f"Processing {text_id} ({i}/{len(rows)})... ERROR - {error}")
 
-            if args.entities_col and args.entities_col not in reader.fieldnames:
-                raise SystemExit(
-                    f"Entities column '{args.entities_col}' not found in CSV headers: {reader.fieldnames}"
-                )
+            if write_summary and summary_writer:
+                row_data: Dict[str, Any] = {
+                    "text_id": text_id,
+                    "text": text,
+                    "entity_count": result.metadata.get("entity_count") if result else "",
+                    "relationship_count": result.metadata.get("relationship_count") if result else "",
+                    "window_count": result.metadata.get("window_count") if result else "",
+                    "entities_json": json.dumps(result.entities) if result else "",
+                    "strategy": result.metadata.get("strategy") if result else "",
+                    "error": error,
+                }
+                if group_col:
+                    row_data["group"] = group
+                summary_writer.writerow(row_data)
 
-            for index, row in enumerate(reader, start=1):
-                text_id = row.get(args.id_col) if args.id_col else str(index)
-                text = row.get(args.text_col) or ""
-                entities_input = (
-                    _parse_entities(row.get(args.entities_col))
-                    if args.entities_col
-                    else []
-                )
+            if result and write_relationships and relationships_writer:
+                for rel in result.relationships:
+                    edge_row: Dict[str, Any] = {
+                        "text_id": text_id,
+                        "window_index": rel.window_index,
+                        "source": rel.source,
+                        "target": rel.target,
+                        "type": rel.type,
+                        "description": rel.description,
+                    }
+                    if group_col:
+                        edge_row["group"] = group
+                    relationships_writer.writerow(edge_row)
 
-                error = ""
-                result = None
-                try:
-                    result = await detector.detect(text, current_entities=entities_input)
-                except Exception as exc:
-                    error = str(exc)
-
-                if write_summary and summary_writer:
-                    summary_writer.writerow(
-                        {
-                            "text_id": text_id,
-                            "text": text,
-                            "entity_count": result.metadata.get("entity_count") if result else "",
-                            "relationship_count": result.metadata.get("relationship_count") if result else "",
-                            "window_count": result.metadata.get("window_count") if result else "",
-                            "entities_json": json.dumps(result.entities) if result else "",
-                            "strategy": result.metadata.get("strategy") if result else "",
-                            "error": error,
-                        }
-                    )
-
-                if result and write_relationships and relationships_writer:
-                    for rel in result.relationships:
-                        relationships_writer.writerow(
-                            {
-                                "text_id": text_id,
-                                "window_index": rel.window_index,
-                                "source": rel.source,
-                                "target": rel.target,
-                                "type": rel.type,
-                                "description": rel.description,
-                            }
-                        )
-
-                if result and write_windows and windows_writer:
-                    for window in result.metadata.get("windows", []):
-                        windows_writer.writerow(
-                            {
-                                "text_id": text_id,
-                                "window_index": window.get("window_index", ""),
-                                "window_text": window.get("window_text", ""),
-                                "summary": window.get("summary", ""),
-                                "relationship_count": window.get("relationship_count", ""),
-                                "entities_json": json.dumps(window.get("entities", [])),
-                                "relationships_json": json.dumps(window.get("relationships", [])),
-                            }
-                        )
+            if result and write_windows and windows_writer:
+                for window in result.metadata.get("windows", []):
+                    win_row: Dict[str, Any] = {
+                        "text_id": text_id,
+                        "window_index": window.get("window_index", ""),
+                        "window_text": window.get("window_text", ""),
+                        "summary": window.get("summary", ""),
+                        "relationship_count": window.get("relationship_count", ""),
+                        "entities_json": json.dumps(window.get("entities", [])),
+                        "relationships_json": json.dumps(window.get("relationships", [])),
+                    }
+                    if group_col:
+                        win_row["group"] = group
+                    windows_writer.writerow(win_row)
 
     finally:
-        for handle in [summary_handle, relationships_handle, windows_handle]:
-            if handle:
-                handle.close()
+        for h in [summary_handle, relationships_handle, windows_handle]:
+            if h:
+                h.close()
 
+    # Write detect_metadata.json
+    metadata = {
+        "input_file": str(input_path),
+        "model": args.model,
+        "provider": provider,
+        "temperature": getattr(args, "temperature", 0.1),
+        "strategy": args.strategy,
+        "prompt_version": args.prompt_version,
+        "entity_prompt_version": args.entity_prompt_version,
+        "windowing": not args.no_windowing,
+        "window_size": window_size if not args.no_windowing else None,
+        "stride": stride if not args.no_windowing else None,
+        "chunk_unit": args.chunk_unit,
+        "group_col": group_col,
+        "total_texts": len(rows),
+        "total_relationships": total_relationships,
+        "unique_entities": len(all_unique_entities),
+        "errors": errors,
+        "timestamp": start_time.isoformat(),
+        "duration_seconds": round((datetime.now() - start_time).total_seconds(), 2),
+        "package_version": PACKAGE_VERSION,
+    }
+    metadata_path = run_dir / "detect_metadata.json"
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+    # Collect output paths
+    output_paths = [str(metadata_path)]
     if write_summary:
-        print(f"Wrote summary CSV: {summary_path}")
+        output_paths.append(str(summary_path))
     if write_relationships:
-        print(f"Wrote relationships CSV: {relationships_path}")
+        output_paths.append(str(relationships_path))
     if write_windows:
-        print(f"Wrote windows CSV: {windows_path}")
+        output_paths.append(str(windows_path))
+
+    # Final summary banner
+    print()
+    print("=" * 50)
+    print("Relationship Detection Complete")
+    print("=" * 50)
+    print(f"  Texts processed:      {len(rows)}")
+    print(f"  Total relationships:  {total_relationships}")
+    print(f"  Unique entities:      {len(all_unique_entities)}")
+    if errors:
+        print(f"  Errors:               {errors}")
+    print()
+    print("Output files:")
+    for p in output_paths:
+        print(f"  {p}")
 
     return 0
 
@@ -553,9 +641,9 @@ async def run_relationships_normalize(args: argparse.Namespace) -> int:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Read relationships from CSV
+    # Read relationships from CSV (supports raw, normalized, and causal formats)
     print(f"Reading relationships from: {input_path}")
-    relationships = _read_relationships_csv(
+    relationships = _read_causal_input_csv(
         input_path,
         source_col=args.source_col,
         target_col=args.target_col,
@@ -1227,15 +1315,9 @@ def add_relationships_graph_args(parser: argparse.ArgumentParser) -> None:
         help="Custom title for PNG visualization.",
     )
     parser.add_argument(
-        "--include-causal",
-        action="store_true",
-        default=True,
-        help="Include causal attributes in graph if present (default: True).",
-    )
-    parser.add_argument(
         "--no-causal",
         action="store_true",
-        help="Exclude causal attributes from graph.",
+        help="Exclude causal attributes from graph (included by default).",
     )
     parser.add_argument(
         "--cluster-nodes",
@@ -1343,7 +1425,7 @@ async def run_relationships_graph(args: argparse.Namespace) -> int:
 
     # Handle scope
     graph = RelationshipGraph()
-    include_causal = args.include_causal and not args.no_causal
+    include_causal = not args.no_causal
 
     # Determine clustering options
     cluster_nodes = args.cluster_nodes
@@ -1772,9 +1854,9 @@ async def run_relationships_verify(args: argparse.Namespace) -> int:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Read relationships from CSV
+    # Read relationships from CSV (supports both raw and normalized formats)
     print(f"Reading relationships from: {input_path}")
-    relationships = _read_relationships_csv(
+    relationships = _read_causal_input_csv(
         input_path,
         source_col=args.source_col,
         target_col=args.target_col,
