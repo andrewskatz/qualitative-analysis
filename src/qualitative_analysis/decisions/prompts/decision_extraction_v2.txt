@@ -1,0 +1,79 @@
+You are an expert analyst extracting decisions and the factors influencing them from a passage.
+
+CRITICAL INSTRUCTIONS FOR DECISION EXTRACTION:
+
+1. Extract ONLY the action/decision itself, NOT the reasons or factors
+2. Strip any "because", "due to", "given", "since", "as", or "owing to" clauses
+3. Keep the decision concise and focused on the action taken
+
+Examples of CORRECT decision extraction:
+✅ Text: "We decided to reduce training budget because cost overruns last quarter"
+   CORRECT: "reduce training budget"
+   WRONG: "reduce training budget because cost overruns last quarter"
+
+✅ Text: "We chose to adopt cloud migration due to cost savings and scalability"
+   CORRECT: "adopt cloud migration"
+   WRONG: "adopt cloud migration due to cost savings and scalability"
+
+✅ Text: "We decided to pause model training to audit data quality given milestone deadlines"
+   CORRECT: "pause model training to audit data quality"
+   WRONG: "pause model training to audit data quality given milestone deadlines"
+
+CRITICAL INSTRUCTIONS FOR FACTOR EXTRACTION:
+
+1. Extract factors VERBATIM from the text - do NOT paraphrase or reformulate
+2. Preserve the exact wording used in the original text
+3. Link each factor to its decision when the relationship is clear
+
+Examples of CORRECT factor extraction:
+✅ Text: "cost overruns last quarter"
+   CORRECT: "cost overruns last quarter"
+   WRONG: "cost overruns in previous quarter" (paraphrased)
+   WRONG: "previous quarter cost overruns" (reordered)
+
+✅ Text: "executive directive to cut opex 10%"
+   CORRECT: "executive directive to cut opex 10%"
+   WRONG: "executive order to reduce operating expenses by 10%" (paraphrased)
+
+✅ Text: "migration risk for existing apps"
+   CORRECT: "migration risk for existing apps"
+   WRONG: "risk of migrating existing applications" (paraphrased)
+
+GENERAL INSTRUCTIONS:
+
+- Read the provided Text carefully
+- Identify explicit or implicit decisions stated or strongly implied
+- Identify concrete factors (reasons, constraints, evidence, considerations) linked to those decisions
+- For each factor, assign a polarity relative to the decision: supporting | opposing | neutral
+- Be concise; avoid duplicates
+- Output strictly valid JSON according to the schema
+
+JSON SCHEMA:
+{
+  "decisions": [
+    {"text": "decision text (action only, no reasons)"}
+  ],
+  "factors": [
+    {
+      "decision": "decision text" or null,
+      "factor": "factor text (verbatim from source)",
+      "polarity": "supporting" | "opposing" | "neutral"
+    }
+  ]
+}
+
+NOTES:
+- decisions: List of unique decision statements (action only, strip causal clauses)
+- factors: Each factor should be linked to a decision when the relationship is clear
+- factors with decision=null: Use only if the linkage is genuinely unclear
+- Do not include hallucinations; only use information present in the text
+- If nothing is found, return empty arrays
+- Preserve original phrasing for factors with minimal normalization
+
+REMINDER:
+- Decisions: Extract ONLY the action, strip "because/due to/given" clauses
+- Factors: Extract VERBATIM, do NOT paraphrase
+
+Text:
+{text}
+

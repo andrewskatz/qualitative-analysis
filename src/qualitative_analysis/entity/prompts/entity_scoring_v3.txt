@@ -34,18 +34,12 @@ Consider:
 - What aspects of the entity are most relevant to each dimension?
 - How does this entity relate to other entities or concepts mentioned in the same context?
 
-Step 3. Assign scores for each dimension.
-Based on your reasoning, assign a score for each dimension using the scale specified for that dimension.
+Step 3. For each dimension, reason about the entity's alignment BEFORE assigning a score.
+- First, articulate your justification: what specific aspects of the entity and context are relevant to this dimension?
+- Then, based on that reasoning, assign a score that follows logically from your justification.
 - Use the dimension definitions and scale anchors provided above
 - Be consistent in your scoring approach across all entities
-- Consider the specific context provided
 - Ensure your scores fall within the specified range for each dimension
-
-Step 4. Provide justifications.
-For each dimension, provide a brief justification for your score, referencing the specific context where appropriate.
-- Explain why you assigned this particular score
-- Reference specific aspects of the entity or context that influenced your scoring
-- Be concise but clear in your reasoning
 
 PART 3: FORMATTING INSTRUCTIONS
 
@@ -57,18 +51,19 @@ Provide your analysis in the following JSON format:
   "dimension_scores": [
     {{
       "dimension": "[dimension_name_1]",
-      "score": {fmt_score_1},
-      "justification": "[Brief explanation for this score, referencing the context]"
+      "justification": "[Your reasoning about this dimension BEFORE deciding the score]",
+      "score": {fmt_score_1}
     }},
     {{
       "dimension": "[dimension_name_2]",
-      "score": {fmt_score_2},
-      "justification": "[Brief explanation for this score, referencing the context]"
+      "justification": "[Your reasoning about this dimension BEFORE deciding the score]",
+      "score": {fmt_score_2}
     }}
   ]
 }}
 
 CRITICAL FORMATTING REQUIREMENTS:
+- For each dimension, the "justification" field MUST come BEFORE the "score" field — reason first, then score
 - The "score" field MUST be a numeric integer (e.g., {score_examples}), NOT a word (e.g., do NOT write "fifty")
 - Ensure you provide scores for ALL dimensions listed above
 - Ensure scores fall within the specified range for each dimension
@@ -95,18 +90,18 @@ Output:
   "dimension_scores": [
     {{
       "dimension": "social",
-      "score": {ex_score_social},
-      "justification": "Strong social dimension through community investment and job creation as explicitly mentioned in the context."
+      "justification": "Strong social dimension through community investment and job creation as explicitly mentioned in the context.",
+      "score": {ex_score_social}
     }},
     {{
       "dimension": "ecological",
-      "score": {ex_score_ecological},
-      "justification": "Primary ecological benefit through carbon emissions reduction, directly addressing environmental concerns."
+      "justification": "Primary ecological benefit through carbon emissions reduction, directly addressing environmental concerns.",
+      "score": {ex_score_ecological}
     }},
     {{
       "dimension": "technological",
-      "score": {ex_score_tech},
-      "justification": "Core technological nature as infrastructure involving engineered systems for energy generation."
+      "justification": "Core technological nature as infrastructure involving engineered systems for energy generation.",
+      "score": {ex_score_tech}
     }}
   ]
 }}
@@ -128,8 +123,7 @@ Remember to:
 - Pay special attention to the specific context provided
 - If the entity could have multiple meanings, focus on the meaning most relevant to the context
 - Provide scores for ALL dimensions using the specified scale ranges
-- Include brief justifications that reference the context
+- For each dimension, write the justification FIRST, then assign the score based on that reasoning
 - CRITICAL: All "score" values MUST be numeric integers (e.g., {score_examples}), never words
 
 Begin your analysis now.
-

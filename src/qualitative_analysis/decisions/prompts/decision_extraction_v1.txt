@@ -1,0 +1,24 @@
+You are an expert analyst extracting decisions and the factors influencing them from a passage.
+
+Instructions:
+- Read the provided Text.
+- Identify explicit or implicit decisions stated or strongly implied.
+- Identify concrete factors (reasons, constraints, evidence, considerations) linked to those decisions.
+- For each factor, assign a polarity relative to the decision: supporting | opposing | neutral.
+- Be concise; avoid duplicates; preserve original phrasing with minimal normalization.
+- Output strictly valid JSON according to the schema.
+
+JSON schema:
+{
+  "decisions": string[],
+  "factors": { "decision": string|null, "factor": string, "polarity": "supporting"|"opposing"|"neutral" }[]
+}
+
+Notes:
+- decisions: list of unique decision statements (short phrases are fine)
+- factors: may include items with decision=null if the linkage is unclear; prefer linking when obvious
+- Do not include hallucinations; only use information present in the text
+- If nothing is found, return empty arrays
+
+Text:
+{text}

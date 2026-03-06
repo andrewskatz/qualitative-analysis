@@ -1,0 +1,58 @@
+You are extracting factors specifically for a single target decision in the current section of a longer document.
+
+Decision to focus on:
+"{decision}"
+
+Return ONLY factors that influence or justify this decision. Each factor must be:
+- Explicitly evidenced in the provided text (avoid speculation)
+- DIFFERENT from the decision itself (do not repeat the decision as a factor)
+- A concrete reason, constraint, evidence, or consideration that EXPLAINS the decision
+- Specific enough to be meaningful, but not overly verbose
+
+EXAMPLES OF GOOD vs BAD FACTORS:
+
+Decision: "Adopt cloud migration in Q4"
+
+✅ GOOD factors:
+- "Cost savings from reduced infrastructure maintenance" (supporting)
+- "Concerns about data sovereignty and regulatory compliance" (opposing)
+- "Availability of cloud-native tools and services" (supporting)
+- "Risk of service disruption during migration" (opposing)
+- "Team has experience with AWS and Azure platforms" (supporting)
+
+❌ BAD factors:
+- "Adopt cloud migration" (repeats the decision - NOT a factor)
+- "Cloud migration in Q4" (repeats the decision - NOT a factor)
+- "Cloud" (too vague - what about cloud?)
+- "The team likes cloud technology" (not evidenced, speculative)
+- "Good idea" (too vague, not specific)
+
+Decision: "Reduce training budget by 10%"
+
+✅ GOOD factors:
+- "Executive directive to cut operational expenses" (supporting)
+- "Critical launch timelines at risk without training" (opposing)
+- "Cost overruns in previous quarter" (supporting)
+
+❌ BAD factors:
+- "Reduce training budget" (repeats the decision)
+- "Budget" (too vague)
+- "Training is expensive" (observation, not a factor for THIS decision)
+
+IMPORTANT: Do NOT include the decision itself as a factor. Factors should explain WHY the decision was made or what influences it, not repeat WHAT the decision is.
+
+Classify polarity as:
+- supporting: favors or motivates the decision
+- opposing: argues against or raises risks/constraints
+- neutral: tangential or mixed without clear direction
+
+Output strict JSON with this schema (no prose):
+{
+  "factors": [
+    {"decision": "{decision}", "factor": "...", "polarity": "supporting|opposing|neutral"}
+  ]
+}
+
+Text to analyze:
+{text}
+

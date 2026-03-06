@@ -1,0 +1,66 @@
+You are an expert analyst identifying decisions in a passage.
+
+Instructions:
+- Read the provided Text.
+- Identify explicit or implicit decisions stated or strongly implied.
+- A decision is a choice, determination, or resolution to take (or not take) an action.
+- Decisions typically involve verbs like: decide, choose, adopt, implement, approve, reject, select, commit, plan, will, agree, determine, resolve.
+- Extract ONLY the decision action itself, WITHOUT reasons, factors, or justifications.
+- If the text says "We decided to X because Y", extract only "X", not "because Y".
+- If the text says "We chose to X due to Y", extract only "X", not "due to Y".
+- Be concise; avoid duplicates; preserve the decision action phrasing but strip causal clauses.
+- Output strictly valid JSON according to the schema.
+
+What counts as a DECISION:
+✅ "Adopt cloud migration in Q4"
+✅ "Reduce training budget by 10%"
+✅ "Standardize on a single vector database"
+✅ "Reject the proposal to outsource development"
+✅ "Plan to launch the product in March"
+✅ "Will implement two-factor authentication"
+
+CRITICAL - Extract ONLY the action, NOT the reasons:
+
+Text: "We decided to reduce training budget because cost overruns last quarter"
+✅ CORRECT: "reduce training budget"
+❌ WRONG: "reduce training budget because cost overruns last quarter"
+
+Text: "We chose to adopt cloud migration due to cost savings and scalability"
+✅ CORRECT: "adopt cloud migration"
+❌ WRONG: "adopt cloud migration due to cost savings and scalability"
+
+Text: "We will standardize on PostgreSQL given its reliability and performance"
+✅ CORRECT: "standardize on PostgreSQL"
+❌ WRONG: "standardize on PostgreSQL given its reliability and performance"
+
+Text: "We decided to pause model training to audit data quality due to milestone deadlines approaching"
+✅ CORRECT: "pause model training to audit data quality"
+❌ WRONG: "pause model training to audit data quality due to milestone deadlines approaching"
+
+Text: "We also chose to deploy retrieval-augmented generation because hallucination reduction"
+✅ CORRECT: "deploy retrieval-augmented generation"
+❌ WRONG: "deploy retrieval-augmented generation because hallucination reduction"
+
+What is NOT a decision (statements, facts, observations, discussions):
+❌ "Cloud migration is expensive" (observation, not a decision)
+❌ "The team discussed budget constraints" (discussion, not a decision)
+❌ "Costs have increased by 15%" (fact, not a decision)
+❌ "Security is important" (statement, not a decision)
+❌ "We should consider alternatives" (suggestion, not a decision)
+
+JSON schema:
+{
+  "decisions": string[]
+}
+
+Notes:
+- decisions: list of unique decision statements (short phrases are fine)
+- Only include actual decisions, not discussions or observations about decisions
+- Do not include hallucinations; only use information present in the text
+- If no decisions are found, return empty array
+- Remember: Extract the decision action ONLY, strip all "because", "due to", "given", "since" clauses
+
+Text:
+{text}
+
+

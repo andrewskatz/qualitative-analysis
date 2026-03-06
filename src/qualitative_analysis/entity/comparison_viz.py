@@ -34,14 +34,19 @@ class ComparisonVisualizer:
     distance heatmaps for comparing entity scores across participants.
     """
 
-    def __init__(self, comparison: "ParticipantComparison"):
+    def __init__(self, comparison: "ParticipantComparison", scale_min: int = 0, scale_max: int = 100):
         """
         Initialize with a loaded ParticipantComparison.
 
         Args:
             comparison: ParticipantComparison with loaded scores.
+            scale_min: Minimum score value on the scoring scale (default 0).
+            scale_max: Maximum score value on the scoring scale (default 100).
         """
         self.comparison = comparison
+        self.scale_min = scale_min
+        self.scale_max = scale_max
+        self.scale_range = scale_max - scale_min
         self.dimension_colors = {
             "social": "#1f77b4",       # Blue
             "ecological": "#2ca02c",   # Green
@@ -295,8 +300,8 @@ class ComparisonVisualizer:
                     ))
                 else:
                     colors.append((0.5, 0.5, 0.5))
-                # Size encodes magnitude on absolute 0-100 scale
-                abs_frac = max(0, min(mean_scores_per_entity[eidx] / 100.0, 1.0))
+                # Size encodes magnitude on absolute scale
+                abs_frac = max(0, min((mean_scores_per_entity[eidx] - self.scale_min) / self.scale_range, 1.0))
                 sizes.append(marker_size * (0.15 + 2.35 * abs_frac))
 
             # Plot entities with size encoding magnitude
@@ -479,7 +484,7 @@ class ComparisonVisualizer:
                     ))
                 else:
                     colors.append((0.5, 0.5, 0.5))
-                abs_frac = max(0, min(mean_scores_per_entity[eidx] / 100.0, 1.0))
+                abs_frac = max(0, min((mean_scores_per_entity[eidx] - self.scale_min) / self.scale_range, 1.0))
                 sizes.append(marker_size * (0.15 + 2.35 * abs_frac))
 
             ax.scatter(xs, ys, s=sizes, c=colors,
@@ -702,11 +707,11 @@ class ComparisonVisualizer:
                         entity_positions[entity] = []
                     entity_positions[entity].append((x, y, pid))
 
-            # Compute per-entity sizes for magnitude encoding (absolute 0-100 scale)
+            # Compute per-entity sizes for magnitude encoding (absolute scale)
             scores_raw = self.comparison.scores_by_participant[pid]
             entity_mean_scores = scores_raw.mean(axis=1)
             point_sizes = [
-                marker_size * (0.15 + 2.35 * max(0, min(ms / 100.0, 1.0)))
+                marker_size * (0.15 + 2.35 * max(0, min((ms - self.scale_min) / self.scale_range, 1.0)))
                 for ms in entity_mean_scores
             ]
 
@@ -1032,7 +1037,7 @@ class ComparisonVisualizer:
             group_by: How to organize plot - "dimension" (default) or "participant".
             title: Plot title.
             score_mode: "normalized" for proportions (sum=1) or "raw" for
-                absolute scores (0-100 scale).
+                absolute scores (on the configured scale).
             groups: Optional dict mapping group names to participant ID lists
                 for coloring labels by group membership.
 
@@ -1120,8 +1125,8 @@ class ComparisonVisualizer:
                     ci_low = ci_high = mean_val
 
                 if use_raw:
-                    ci_low = max(0.0, min(100.0, ci_low))
-                    ci_high = max(0.0, min(100.0, ci_high))
+                    ci_low = max(float(self.scale_min), min(float(self.scale_max), ci_low))
+                    ci_high = max(float(self.scale_min), min(float(self.scale_max), ci_high))
                 else:
                     ci_low = max(0.0, min(1.0, ci_low))
                     ci_high = max(0.0, min(1.0, ci_high))
@@ -1131,9 +1136,9 @@ class ComparisonVisualizer:
         # Axis configuration based on score mode
         if use_raw:
             x_label = 'Score'
-            x_lim = (0, 100)
-            ref_line_x = 50
-            subtitle_text = "Raw scores (0–100 scale) | Dashed line = midpoint (50)"
+            x_lim = (self.scale_min, self.scale_max)
+            ref_line_x = (self.scale_min + self.scale_max) / 2
+            subtitle_text = f"Raw scores ({self.scale_min}\u2013{self.scale_max} scale) | Dashed line = midpoint ({ref_line_x:.0f})"
         else:
             x_label = 'Proportion'
             x_lim = (0, 1)

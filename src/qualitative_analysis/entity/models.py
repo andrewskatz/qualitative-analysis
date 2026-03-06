@@ -129,6 +129,63 @@ class DimensionSet:
 
 
 # =============================================================================
+# SCALE CONFIGURATION
+# =============================================================================
+
+@dataclass
+class ScaleConfig:
+    """
+    Score scale configuration for the entity scoring pipeline.
+
+    Propagated from CLI args or auto-detected from score_metadata.json.
+    Used by scoring, Bayesian modeling, and visualization components.
+    """
+    scale_min: int = 0
+    scale_max: int = 100
+
+    @property
+    def scale_range(self) -> int:
+        return self.scale_max - self.scale_min
+
+    @property
+    def midpoint(self) -> float:
+        return (self.scale_min + self.scale_max) / 2
+
+    def fraction(self, value: float) -> float:
+        """Convert raw score to [0, 1] fraction."""
+        return max(0, min((value - self.scale_min) / self.scale_range, 1.0))
+
+    def from_fraction(self, frac: float) -> float:
+        """Convert [0, 1] fraction back to raw scale."""
+        return self.scale_min + frac * self.scale_range
+
+    def rope_default(self) -> float:
+        """Proportional ROPE: 5% of scale range."""
+        return self.scale_range * 0.05
+
+    def reference_levels(self) -> list:
+        """Reference sizes for legends at 25%, 50%, 75% of scale."""
+        r = self.scale_range
+        return [
+            (self.scale_min + 0.25 * r, f"{self.scale_min + 0.25 * r:.0f}"),
+            (self.scale_min + 0.50 * r, f"{self.scale_min + 0.50 * r:.0f}"),
+            (self.scale_min + 0.75 * r, f"{self.scale_min + 0.75 * r:.0f}"),
+        ]
+
+    @classmethod
+    def from_metadata_file(cls, metadata_path) -> "ScaleConfig":
+        """Load from score_metadata.json if scale fields present."""
+        import json as _json
+        from pathlib import Path
+        with open(Path(metadata_path)) as f:
+            meta = _json.load(f)
+        return cls(
+            scale_min=meta.get("scale_min", 0),
+            scale_max=meta.get("scale_max", 100),
+        )
+
+
+# =============================================================================
 # SCORING MODELS
 # =============================================================================
 
@@ -177,7 +234,9 @@ class DimensionScore:
         cls,
         dimension: str,
         scores: List[int],
-        justification: str = ""
+        justification: str = "",
+        scale_min: int = 0,
+        scale_max: int = 100,
     ) -> "DimensionScore":
         """
         Create a DimensionScore from raw scores with computed statistics.
@@ -218,8 +277,8 @@ class DimensionScore:
         if n > 1:
             t_value = float(t_dist.ppf(0.975, df=n - 1))
             margin = t_value * std_dev / (n ** 0.5)
-            ci_low = max(0, mean_val - margin)
-            ci_high = min(100, mean_val + margin)
+            ci_low = max(scale_min, mean_val - margin)
+            ci_high = min(scale_max, mean_val + margin)
         else:
             ci_low = ci_high = mean_val
 

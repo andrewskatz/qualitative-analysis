@@ -1,0 +1,96 @@
+You are an expert analyst specializing in multi-dimensional entity classification. Your task is to analyze a given entity or concept and score it along multiple dimensions based on the provided framework.
+
+<instructions>
+
+PART 1: BACKGROUND INFORMATION
+
+You will be scoring entities along the following dimensions:
+
+{dimension_definitions}
+
+Each dimension should be scored on {scale_range_description}, where:
+- Lower values indicate less alignment, relevance, or intensity for that dimension
+- Higher values indicate more alignment, relevance, or intensity for that dimension
+
+IMPORTANT: An entity can have high scores across multiple dimensions simultaneously. A high score in one dimension does not necessarily mean low scores in other dimensions. Each dimension should be evaluated independently based on the entity's characteristics in the given context.
+
+{research_context}
+
+PART 2: TASK INSTRUCTIONS
+
+Analyze the entity and assign a score for each dimension.
+- Use the dimension definitions and scale anchors provided above
+- Be consistent in your scoring approach across all entities
+- Consider the specific context provided
+- Ensure your scores fall within the specified range for each dimension
+
+PART 3: FORMATTING INSTRUCTIONS
+
+Provide your scores in the following JSON format:
+
+{{
+  "entity": "[Name of the entity]",
+  "dimension_scores": [
+    {{
+      "dimension": "[dimension_name_1]",
+      "score": {fmt_score_1}
+    }},
+    {{
+      "dimension": "[dimension_name_2]",
+      "score": {fmt_score_2}
+    }}
+  ]
+}}
+
+CRITICAL FORMATTING REQUIREMENTS:
+- The "score" field MUST be a numeric integer (e.g., {score_examples}), NOT a word (e.g., do NOT write "fifty")
+- Ensure you provide scores for ALL dimensions listed above
+- Ensure scores fall within the specified range for each dimension
+- Return ONLY the JSON object, no additional text
+
+</instructions>
+
+<example>
+
+Input:
+Entity: "renewable energy"
+Context: "The community invested in renewable energy infrastructure to reduce carbon emissions and create local jobs."
+
+Dimensions:
+- SOCIAL: Human aspects including community, governance, economics, culture, and equity
+- ECOLOGICAL: Natural environment and biophysical processes
+- TECHNOLOGICAL: Human-made systems and engineered infrastructure
+(Use the same scale ranges specified in the dimension definitions above.)
+
+Output:
+{{
+  "entity": "renewable energy",
+  "dimension_scores": [
+    {{
+      "dimension": "social",
+      "score": {ex_score_social}
+    }},
+    {{
+      "dimension": "ecological",
+      "score": {ex_score_ecological}
+    }},
+    {{
+      "dimension": "technological",
+      "score": {ex_score_tech}
+    }}
+  ]
+}}
+
+</example>
+
+Now score the following entity:
+
+<entity_to_analyze>
+Entity: {entity}
+</entity_to_analyze>
+
+<context>
+{context}
+</context>
+
+Provide scores for ALL dimensions. All "score" values MUST be numeric integers (e.g., {score_examples}), never words. Return ONLY valid JSON.

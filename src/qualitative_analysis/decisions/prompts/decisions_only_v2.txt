@@ -1,0 +1,39 @@
+You are an expert analyst identifying decisions in a passage.
+
+Instructions:
+- Read the provided Text.
+- Identify explicit or implicit decisions stated or strongly implied.
+- A decision is a choice, determination, or resolution to take (or not take) an action.
+- Decisions typically involve verbs like: decide, choose, adopt, implement, approve, reject, select, commit, plan, will, agree, determine, resolve.
+- Be concise; avoid duplicates; preserve original phrasing with minimal normalization.
+- Output strictly valid JSON according to the schema.
+
+What counts as a DECISION:
+✅ "Adopt cloud migration in Q4"
+✅ "Reduce training budget by 10%"
+✅ "Standardize on a single vector database"
+✅ "Reject the proposal to outsource development"
+✅ "Plan to launch the product in March"
+✅ "Will implement two-factor authentication"
+
+What is NOT a decision (statements, facts, observations, discussions):
+❌ "Cloud migration is expensive" (observation, not a decision)
+❌ "The team discussed budget constraints" (discussion, not a decision)
+❌ "Costs have increased by 15%" (fact, not a decision)
+❌ "Security is important" (statement, not a decision)
+❌ "We should consider alternatives" (suggestion, not a decision)
+
+JSON schema:
+{
+  "decisions": string[]
+}
+
+Notes:
+- decisions: list of unique decision statements (short phrases are fine)
+- Only include actual decisions, not discussions or observations about decisions
+- Do not include hallucinations; only use information present in the text
+- If no decisions are found, return empty array
+
+Text:
+{text}
+

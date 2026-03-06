@@ -95,9 +95,14 @@ def add_map_args(parser: argparse.ArgumentParser) -> None:
         help="Save checkpoint every N items",
     )
     parser.add_argument(
-        "--log-llm",
+        "--verbose", "-v",
         action="store_true",
         help="Print LLM prompts and responses to the terminal",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="(Alias for --verbose) Print LLM prompts and responses to the terminal",
     )
 
 
@@ -167,9 +172,14 @@ def add_normalize_args(parser: argparse.ArgumentParser) -> None:
         help="Ollama base URL",
     )
     parser.add_argument(
-        "--log-llm",
+        "--verbose", "-v",
         action="store_true",
         help="Print LLM prompts and responses to the terminal",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="(Alias for --verbose) Print LLM prompts and responses to the terminal",
     )
     parser.add_argument(
         "--checkpoint",
@@ -251,9 +261,14 @@ def add_graph_args(parser: argparse.ArgumentParser) -> None:
         help="Ollama base URL (default: http://localhost:11434)",
     )
     parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Print LLM prompts and responses to the terminal",
+    )
+    parser.add_argument(
         "--log-llm",
         action="store_true",
-        help="Log LLM prompts and responses",
+        help="(Alias for --verbose) Print LLM prompts and responses to the terminal",
     )
     parser.add_argument(
         "--min-label-size",
@@ -318,9 +333,14 @@ def add_pipeline_args(parser: argparse.ArgumentParser) -> None:
         help="Graph output format",
     )
     parser.add_argument(
-        "--log-llm",
+        "--verbose", "-v",
         action="store_true",
         help="Print LLM prompts and responses to the terminal",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="(Alias for --verbose) Print LLM prompts and responses to the terminal",
     )
 
 
@@ -444,8 +464,8 @@ async def run_map(args) -> int:
         provider="ollama",
         provider_config={
             "base_url": args.base_url,
-            "log_prompts": args.log_llm,
-            "log_responses": args.log_llm,
+            "log_prompts": getattr(args, 'verbose', False) or getattr(args, 'log_llm', False),
+            "log_responses": getattr(args, 'verbose', False) or getattr(args, 'log_llm', False),
         },
         multi_level=args.multi_level,
     )
@@ -572,10 +592,11 @@ def run_normalize(args) -> int:
         # Build LLM config if using LLM canonical method
         llm_config = None
         if args.canonical_method == "llm":
+            _log_llm = getattr(args, 'verbose', False) or getattr(args, 'log_llm', False)
             llm_config = {
                 "base_url": args.base_url,
-                "log_prompts": args.log_llm,
-                "log_responses": args.log_llm,
+                "log_prompts": _log_llm,
+                "log_responses": _log_llm,
             }
         
         normalization = normalizer.normalize(

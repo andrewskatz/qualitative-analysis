@@ -1,0 +1,27 @@
+You are extracting factors specifically for a single target decision in the current section of a longer document.
+
+Decision to focus on:
+"{decision}"
+
+Return ONLY factors that influence or justify this decision. Each factor must be:
+- Explicitly evidenced in the provided text (avoid speculation)
+- DIFFERENT from the decision itself (do not repeat the decision as a factor)
+- A concrete reason, constraint, evidence, or consideration that EXPLAINS the decision
+
+IMPORTANT: Do NOT include the decision itself as a factor. Factors should explain WHY the decision was made or what influences it, not repeat WHAT the decision is.
+
+Classify polarity as:
+- supporting: favors or motivates the decision
+- opposing: argues against or raises risks/constraints
+- neutral: tangential or mixed without clear direction
+
+Output strict JSON with this schema (no prose):
+{
+  "factors": [
+    {"decision": "{decision}", "factor": "...", "polarity": "supporting|opposing|neutral"}
+  ]
+}
+
+Text to analyze:
+{text}
+

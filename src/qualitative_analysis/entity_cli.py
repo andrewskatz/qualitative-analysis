@@ -24,6 +24,39 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# SCALE AUTO-DETECTION HELPER
+# =============================================================================
+
+def _resolve_scale(args: argparse.Namespace, input_csv_dir: Path) -> "ScaleConfig":
+    """
+    Resolve scale configuration with priority:
+    1. Explicit CLI args (--scale-min, --scale-max)
+    2. score_metadata.json in same directory as input
+    3. Defaults (0, 100)
+    """
+    from qualitative_analysis.entity.models import ScaleConfig
+
+    scale_min, scale_max = 0, 100
+
+    # Try metadata file
+    meta_path = input_csv_dir / "score_metadata.json"
+    if meta_path.exists():
+        try:
+            sc = ScaleConfig.from_metadata_file(meta_path)
+            scale_min, scale_max = sc.scale_min, sc.scale_max
+        except Exception:
+            pass  # Fall back to defaults
+
+    # CLI overrides take priority
+    if getattr(args, 'scale_min', None) is not None:
+        scale_min = args.scale_min
+    if getattr(args, 'scale_max', None) is not None:
+        scale_max = args.scale_max
+
+    return ScaleConfig(scale_min=scale_min, scale_max=scale_max)
+
+
+# =============================================================================
 # ENTITY SCORING COMMAND
 # =============================================================================
 
@@ -58,6 +91,24 @@ def add_entity_score_args(parser: argparse.ArgumentParser) -> None:
         help="Dimension set: 'sets' for SETS framework, or path to JSON file with custom dimensions (default: sets).",
     )
     parser.add_argument(
+        "--scale-min",
+        type=int,
+        default=None,
+        help="Minimum score value. Overrides scale_min on all dimensions (default: per-dimension, typically 0).",
+    )
+    parser.add_argument(
+        "--scale-max",
+        type=int,
+        default=None,
+        help="Maximum score value. Overrides scale_max on all dimensions (default: per-dimension, typically 100).",
+    )
+    parser.add_argument(
+        "--prompt-version",
+        default="v2",
+        choices=["v2", "v3", "v4"],
+        help="Prompt template version: v2 (score then justify), v3 (justify then score), v4 (scores only, no CoT) (default: v2).",
+    )
+    parser.add_argument(
         "--num-runs",
         type=int,
         default=3,
@@ -71,7 +122,7 @@ def add_entity_score_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--provider",
         default="ollama",
-        choices=["ollama", "openai", "anthropic"],
+        choices=["ollama", "mlx", "openai", "anthropic"],
         help="LLM provider (default: ollama).",
     )
     parser.add_argument(
@@ -84,6 +135,12 @@ def add_entity_score_args(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=0.3,
         help="LLM temperature for generation (default: 0.3).",
+    )
+    parser.add_argument(
+        "--enable-thinking",
+        action="store_true",
+        default=False,
+        help="Enable reasoning/thinking mode for models that support it (e.g., Qwen3.5). Default: disabled.",
     )
     parser.add_argument(
         "--research-context",
@@ -112,10 +169,15 @@ def add_entity_score_args(parser: argparse.ArgumentParser) -> None:
         help="Print LLM prompts and responses to terminal for monitoring.",
     )
     parser.add_argument(
-        "--checkpoint",
+        "--log-llm",
+        action="store_true",
+        help="(Alias for --verbose) Print LLM prompts and responses to terminal.",
+    )
+    parser.add_argument(
+        "--no-checkpoint",
         action="store_true",
         default=False,
-        help="Enable checkpointing: save progress after each entity and resume from checkpoint on restart.",
+        help="Disable checkpointing. By default, progress is saved after each entity and resumed on restart.",
     )
 
 
@@ -171,6 +233,15 @@ async def run_entity_score(args: argparse.Namespace) -> int:
 
         print(f"Loaded {len(dimensions)} custom dimensions from {dim_path}")
 
+    # Apply scale overrides if provided
+    if getattr(args, 'scale_min', None) is not None or getattr(args, 'scale_max', None) is not None:
+        for dim in dimensions:
+            if args.scale_min is not None:
+                dim.scale_min = args.scale_min
+            if args.scale_max is not None:
+                dim.scale_max = args.scale_max
+        print(f"Scale override: {dimensions[0].scale_min}-{dimensions[0].scale_max}")
+
     # Load research context if provided
     research_context = None
     if args.research_context:
@@ -199,7 +270,7 @@ async def run_entity_score(args: argparse.Namespace) -> int:
 
     # Checkpoint setup
     from qualitative_analysis.entity.models import EntityScoreResult
-    use_checkpoint = getattr(args, 'checkpoint', False)
+    use_checkpoint = not getattr(args, 'no_checkpoint', False)
     output_prefix = input_path.stem
     checkpoint_path = output_dir / f"{output_prefix}_checkpoint.jsonl"
     checkpoint_scores = []
@@ -226,16 +297,31 @@ async def run_entity_score(args: argparse.Namespace) -> int:
         return 1
     else:
         # Initialize LLM provider
+        log_llm = getattr(args, 'verbose', False) or getattr(args, 'log_llm', False)
         if args.provider == "ollama":
             llm_provider = OllamaProvider(
                 model_name=args.model,
                 base_url=args.base_url,
             )
+        elif args.provider == "mlx":
+            from qualitative_analysis.core.providers import MLXProvider
+            llm_provider = MLXProvider(
+                model_name=args.model,
+                enable_thinking=getattr(args, 'enable_thinking', False),
+                log_prompts=log_llm,
+                log_responses=log_llm,
+            )
         else:
-            raise SystemExit(f"Provider '{args.provider}' not yet supported. Use 'ollama'.")
+            raise SystemExit(f"Provider '{args.provider}' not yet supported. Use 'ollama' or 'mlx'.")
 
         # Initialize scorer
-        scorer = EntityScorer(temperature=args.temperature, verbose=getattr(args, 'verbose', False))
+        prompt_version = getattr(args, 'prompt_version', 'v2')
+        scorer = EntityScorer(
+            prompt_version=prompt_version,
+            temperature=args.temperature,
+            verbose=log_llm,
+        )
+        print(f"Prompt version: {prompt_version}")
 
         # Score entities
         n_already = len(checkpoint_scores)
@@ -273,6 +359,10 @@ async def run_entity_score(args: argparse.Namespace) -> int:
             on_entity_scored=checkpoint_callback if use_checkpoint else None,
             on_run_progress=run_progress_callback,
         )
+
+        # Close LLM provider connection
+        if hasattr(llm_provider, 'close'):
+            await llm_provider.close()
 
         # Merge checkpoint scores with newly scored entities
         if checkpoint_scores:
@@ -319,6 +409,9 @@ async def run_entity_score(args: argparse.Namespace) -> int:
         "num_runs": args.num_runs,
         "dimensions": args.dimensions,
         "dimension_names": dim_names,
+        "scale_min": dimensions[0].scale_min,
+        "scale_max": dimensions[0].scale_max,
+        "prompt_version": getattr(args, 'prompt_version', 'v2'),
         "total_entities_scored": len(result.scores),
         "errors": result.config.get("errors", 0),
         "timestamp": datetime.now().isoformat(),
@@ -478,6 +571,8 @@ def _load_checkpoint(
                         dimension=dim_key,
                         scores=run_scores,
                         justification=data.get(f"{dim_key}_justification", ""),
+                        scale_min=dim_def.scale_min,
+                        scale_max=dim_def.scale_max,
                     )
 
             scores.append(EntityScore(
@@ -750,6 +845,18 @@ def add_entity_viz_args(parser: argparse.ArgumentParser) -> None:
         default="14,10",
         help="Figure size as 'width,height' in inches (default: 14,10).",
     )
+    parser.add_argument(
+        "--scale-min",
+        type=int,
+        default=None,
+        help="Minimum score value (default: auto-detect from score_metadata.json, typically 0).",
+    )
+    parser.add_argument(
+        "--scale-max",
+        type=int,
+        default=None,
+        help="Maximum score value (default: auto-detect from score_metadata.json, typically 100).",
+    )
 
 
 async def run_entity_viz(args: argparse.Namespace) -> int:
@@ -801,6 +908,9 @@ async def run_entity_viz(args: argparse.Namespace) -> int:
     except ValueError:
         figsize = (14, 10)
 
+    # Resolve scale
+    scale = _resolve_scale(args, input_path.parent)
+
     # Initialize visualizer
     visualizer = EntityVisualizer()
 
@@ -815,6 +925,8 @@ async def run_entity_viz(args: argparse.Namespace) -> int:
             figsize=figsize,
             show_labels=not args.no_labels,
             use_numbered_labels=not args.direct_labels,
+            scale_min=scale.scale_min,
+            scale_max=scale.scale_max,
         )
     elif args.type == "radar":
         title = args.title or f"Entity Scores (Radar)"
@@ -825,6 +937,8 @@ async def run_entity_viz(args: argparse.Namespace) -> int:
             title=title,
             figsize=figsize,
             max_entities=args.max_entities,
+            scale_min=scale.scale_min,
+            scale_max=scale.scale_max,
         )
 
     # Emit metadata file alongside the output image
@@ -1081,6 +1195,19 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
         help="Disable numbered labels on individual ternary plots. Entities are ordered by color spectrum in the legend.",
     )
 
+    parser.add_argument(
+        "--scale-min",
+        type=int,
+        default=None,
+        help="Minimum score value (default: auto-detect from score_metadata.json, typically 0).",
+    )
+    parser.add_argument(
+        "--scale-max",
+        type=int,
+        default=None,
+        help="Maximum score value (default: auto-detect from score_metadata.json, typically 100).",
+    )
+
     # Bayesian modeling arguments
     parser.add_argument(
         "--method",
@@ -1119,8 +1246,8 @@ def add_entity_compare_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--rope-delta",
         type=float,
-        default=5.0,
-        help="ROPE half-width on 0-100 scale for practical significance (default: 5.0).",
+        default=None,
+        help="ROPE half-width for practical significance (default: 5%% of scale range).",
     )
     parser.add_argument(
         "--sampler",
@@ -1495,8 +1622,15 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
     # Check if individual visualizations should be skipped
     skip_individual = getattr(args, 'skip_individual_viz', False) and groups is not None
 
+    # Resolve scale
+    scale = _resolve_scale(args, input_path.parent)
+
     # Initialize visualizer
-    visualizer = ComparisonVisualizer(comparison)
+    visualizer = ComparisonVisualizer(
+        comparison,
+        scale_min=scale.scale_min,
+        scale_max=scale.scale_max,
+    )
 
     # Pass groups to visualizer if defined
     if groups:
@@ -1748,6 +1882,8 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                     participant_col=args.participant_col,
                     entity_col=args.entity_col,
                     group_col=group_col,
+                    scale_min=scale.scale_min,
+                    scale_max=scale.scale_max,
                 )
 
                 # Fit all dimensions
@@ -1783,9 +1919,11 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                     )
 
                 # Print group contrast highlights
-                rope_delta = getattr(args, 'rope_delta', 5.0)
+                rope_delta = getattr(args, 'rope_delta', None)
+                if rope_delta is None:
+                    rope_delta = scale.rope_default()
                 contrasts = bayesian_model.compute_group_contrasts(rope_delta=rope_delta)
-                print("\nGroup Contrasts (population-level mean difference, 0-100 scale):")
+                print(f"\nGroup Contrasts (population-level mean difference, {scale.scale_min}-{scale.scale_max} scale):")
                 for dim, dim_contrasts in contrasts.items():
                     print(f"\n  {dim.upper()}:")
                     for pair_key, c in dim_contrasts.items():
@@ -1794,7 +1932,7 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                         print(
                             f"    {c['group_a']} vs {c['group_b']}: "
                             f"Δ = {c['mean_diff']:+.2f} "
-                            f"[{c['hdi_3%']:+.2f}, {c['hdi_97%']:+.2f}], "
+                            f"[{c['hdi_lower']:+.2f}, {c['hdi_upper']:+.2f}], "
                             f"P({c['group_a']}{direction}{c['group_b']}) = {p_dir:.3f}"
                         )
 
@@ -1812,7 +1950,7 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                     for dim in dimension_names:
                         loo_result = bayesian_model.compare_models(
                             dim,
-                            chains=chains,
+                            chains=args.chains,
                             draws=args.draws,
                             tune=args.tune,
                             sampler=args.sampler,
@@ -2284,6 +2422,18 @@ def add_entity_compare_viz_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Disable numbered labels on individual ternary plots. Entities are ordered by color spectrum in the legend.",
     )
+    parser.add_argument(
+        "--scale-min",
+        type=int,
+        default=None,
+        help="Minimum score value (default: auto-detect from score_metadata.json, typically 0).",
+    )
+    parser.add_argument(
+        "--scale-max",
+        type=int,
+        default=None,
+        help="Maximum score value (default: auto-detect from score_metadata.json, typically 100).",
+    )
 
 
 async def run_entity_compare_viz(args: argparse.Namespace) -> int:
@@ -2367,7 +2517,14 @@ async def run_entity_compare_viz(args: argparse.Namespace) -> int:
     if "all" in viz_types:
         viz_types = ["faceted", "overlaid", "heatmap", "forest", "similarity-map"]
 
-    visualizer = ComparisonVisualizer(comparison)
+    # Resolve scale
+    scale = _resolve_scale(args, input_path.parent)
+
+    visualizer = ComparisonVisualizer(
+        comparison,
+        scale_min=scale.scale_min,
+        scale_max=scale.scale_max,
+    )
     if groups:
         visualizer.groups = groups
 
@@ -2888,9 +3045,9 @@ async def run_entity_cluster(args: argparse.Namespace) -> int:
     comparison = ParticipantComparison()
     comparison.load_scores(
         str(input_path),
-        dimension_names,
         participant_col=args.participant_col,
         entity_col=args.entity_col,
+        dimensions=dimension_names,
     )
 
     print(f"Loaded {len(comparison.scores_by_participant)} participants")
@@ -3037,7 +3194,7 @@ def add_entity_detect_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--provider",
-        choices=["ollama", "openai", "anthropic"],
+        choices=["ollama", "mlx", "openai", "anthropic"],
         default="ollama",
         help="LLM provider (default: ollama).",
     )
@@ -3063,9 +3220,14 @@ def add_entity_detect_args(parser: argparse.ArgumentParser) -> None:
         help="Entity extraction prompt version (default: 1).",
     )
     parser.add_argument(
-        "--log-llm",
+        "--verbose", "-v",
         action="store_true",
         help="Print LLM prompts and responses to terminal.",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="(Alias for --verbose) Print LLM prompts and responses to terminal.",
     )
     parser.add_argument(
         "--limit",
@@ -3100,16 +3262,24 @@ async def run_entity_detect(args: argparse.Namespace) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize LLM provider
+    log_llm = getattr(args, 'verbose', False) or getattr(args, 'log_llm', False)
     if args.provider == "ollama":
         llm_provider = OllamaProvider(
             model_name=args.model,
             base_url=args.base_url,
             temperature=args.temperature,
-            log_prompts=args.log_llm,
-            log_responses=args.log_llm,
+            log_prompts=log_llm,
+            log_responses=log_llm,
+        )
+    elif args.provider == "mlx":
+        from qualitative_analysis.core.providers import MLXProvider
+        llm_provider = MLXProvider(
+            model_name=args.model,
+            log_prompts=log_llm,
+            log_responses=log_llm,
         )
     else:
-        raise SystemExit(f"Provider '{args.provider}' not yet supported. Use 'ollama'.")
+        raise SystemExit(f"Provider '{args.provider}' not yet supported. Use 'ollama' or 'mlx'.")
 
     # Initialize detector
     detector = EntityDetector(

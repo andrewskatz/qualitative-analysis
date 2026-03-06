@@ -44,6 +44,10 @@ bayes = [
     "arviz>=0.20",
     "nutpie>=0.13",
 ]
+mlx = [
+    "mlx-vlm>=0.3.12",
+    "torchvision",
+]
 
 [project.scripts]
 qa = "qualitative_analysis.unified_cli:main"
@@ -58,6 +62,7 @@ include = [
     "src/qualitative_analysis/figurative/domains/prompts/*.txt",
     "src/qualitative_analysis/relationships/prompts/*.txt",
     "src/qualitative_analysis/entity/prompts/*.txt",
+    "src/qualitative_analysis/decisions/prompts/*.txt",
 ]
 
 [tool.pytest.ini_options]

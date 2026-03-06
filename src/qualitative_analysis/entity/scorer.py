@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 PROMPT_DIR = Path(__file__).parent / "prompts"
 DEFAULT_PROMPT_FILE = PROMPT_DIR / "entity_scoring_v2.txt"
 
+# Available prompt versions
+PROMPT_VERSIONS = {
+    "v2": PROMPT_DIR / "entity_scoring_v2.txt",
+    "v3": PROMPT_DIR / "entity_scoring_v3.txt",
+    "v4": PROMPT_DIR / "entity_scoring_v4.txt",
+}
+
 
 class EntityScorer:
     """
@@ -58,6 +65,7 @@ class EntityScorer:
     def __init__(
         self,
         prompt_template: Optional[str] = None,
+        prompt_version: Optional[str] = None,
         temperature: float = 0.3,
         verbose: bool = False,
     ):
@@ -66,25 +74,37 @@ class EntityScorer:
 
         Args:
             prompt_template: Custom prompt template string. If None, uses default.
+            prompt_version: Prompt version to use ("v2", "v3", "v4"). Overrides
+                prompt_template if set. If None, uses "v2" (default).
             temperature: LLM temperature for generation (default 0.3 for stability).
             verbose: If True, print prompts and responses to stdout.
         """
         self.temperature = temperature
         self.verbose = verbose
+        self.prompt_version = prompt_version or "v2"
         self.system_prompt = load_entity_prompt("scoring_system_prompt")
 
-        if prompt_template:
+        if prompt_template and not prompt_version:
             self._prompt_template = prompt_template
         else:
-            self._prompt_template = self._load_default_prompt()
+            self._prompt_template = self._load_prompt(self.prompt_version)
 
-    def _load_default_prompt(self) -> str:
-        """Load the default prompt template from file."""
-        if DEFAULT_PROMPT_FILE.exists():
-            return DEFAULT_PROMPT_FILE.read_text(encoding="utf-8")
+    def _load_prompt(self, version: str) -> str:
+        """Load a prompt template by version name."""
+        if version in PROMPT_VERSIONS:
+            path = PROMPT_VERSIONS[version]
+            if path.exists():
+                return path.read_text(encoding="utf-8")
+            else:
+                logger.warning(
+                    f"Prompt file for {version} not found at {path}, using fallback"
+                )
+                return self._get_fallback_prompt()
         else:
-            logger.warning("Default scoring prompt not found, using fallback")
-            return self._get_fallback_prompt()
+            available = ", ".join(sorted(PROMPT_VERSIONS.keys()))
+            raise ValueError(
+                f"Unknown prompt version '{version}'. Available: {available}"
+            )
 
     def _get_fallback_prompt(self) -> str:
         """Return a minimal fallback prompt."""
@@ -100,7 +120,7 @@ Return JSON with this structure:
   "entity": "{entity}",
   "initial_observations": "Your reasoning about the entity",
   "dimension_scores": [
-    {{"dimension": "dimension_name", "score": 75, "justification": "Brief explanation"}}
+    {{"dimension": "dimension_name", "score": {fmt_score_1}, "justification": "Brief explanation"}}
   ]
 }}
 
@@ -373,12 +393,16 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
         # Format research context
         research_text = self._format_research_context(research_context)
 
+        # Compute scale-proportional example scores for template
+        scale_examples = self._compute_scale_examples(dimensions)
+
         return self._prompt_template.format(
             entity=entity,
             context=context,
             dimension_definitions=dim_text,
             scale_range_description=scale_desc,
             research_context=research_text,
+            **scale_examples,
         )
 
     def _format_dimensions(self, dimensions: List[DimensionDefinition]) -> str:
@@ -408,6 +432,38 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
             return f"a {scale_min}-{scale_max} scale"
         else:
             return "the specified scale for each dimension"
+
+    @staticmethod
+    def _compute_scale_examples(
+        dimensions: List[DimensionDefinition],
+    ) -> Dict[str, Any]:
+        """Compute proportional example scores for the prompt template.
+
+        Returns a dict of template variables with example scores scaled
+        to the configured range, so hardcoded 0-100 values never leak
+        into prompts that use a different scale.
+        """
+        # Use the first dimension's scale (they should all match after CLI override)
+        s_min = dimensions[0].scale_min
+        s_max = dimensions[0].scale_max
+        s_range = s_max - s_min
+
+        def _at(fraction: float) -> int:
+            return round(s_min + fraction * s_range)
+
+        return {
+            "scale_min": s_min,
+            "scale_max": s_max,
+            # JSON-format block examples (~75% and ~60%)
+            "fmt_score_1": _at(0.75),
+            "fmt_score_2": _at(0.60),
+            # Worked-example output scores (social=75%, eco=85%, tech=90%)
+            "ex_score_social": _at(0.75),
+            "ex_score_ecological": _at(0.85),
+            "ex_score_tech": _at(0.90),
+            # Comma-separated list for "e.g." hints (~50%, ~75%, max)
+            "score_examples": f"{_at(0.50)}, {_at(0.75)}, {s_max}",
+        }
 
     def _format_research_context(
         self, research_context: Optional[Dict[str, str]]
@@ -542,6 +598,8 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
                 dimension=dim_name,
                 scores=scores,
                 justification=combined_justification,
+                scale_min=dim.scale_min,
+                scale_max=dim.scale_max,
             )
 
         return aggregated

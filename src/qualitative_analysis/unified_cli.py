@@ -57,6 +57,9 @@ For more information on a specific command:
     # Entity analysis
     _add_entity_commands(subparsers)
 
+    # Decision/factor analysis
+    _add_decisions_commands(subparsers)
+
     return parser
 
 
@@ -350,6 +353,74 @@ def _add_entity_commands(
     )
     add_entity_cluster_args(cluster_parser)
     cluster_parser.set_defaults(func=lambda args: asyncio.run(run_entity_cluster(args)))
+
+
+def _add_decisions_commands(
+    subparsers: argparse._SubParsersAction,
+) -> None:
+    """Add decision/factor analysis subcommands."""
+    from qualitative_analysis.decisions_cli import (
+        add_decisions_detect_args,
+        run_decisions_detect,
+        add_decisions_normalize_args,
+        run_decisions_normalize,
+        add_decisions_aggregate_args,
+        run_decisions_aggregate,
+        add_decisions_viz_args,
+        run_decisions_viz,
+    )
+
+    dec_parser = subparsers.add_parser(
+        "decisions",
+        aliases=["dec"],
+        help="Decision/factor extraction and analysis",
+        description="Extract decisions and their supporting/opposing factors from text.\n\n"
+                    "Recommended pipeline order:\n"
+                    "  detect → normalize → aggregate → viz",
+    )
+
+    dec_subs = dec_parser.add_subparsers(
+        dest="action",
+        title="commands",
+        description="Available decision commands",
+        metavar="ACTION",
+    )
+
+    # detect subcommand
+    detect_parser = dec_subs.add_parser(
+        "detect",
+        help="Extract decisions and factors from text",
+        description="Analyze CSV text data to identify decisions and their supporting/opposing factors.",
+    )
+    add_decisions_detect_args(detect_parser)
+    detect_parser.set_defaults(func=lambda args: asyncio.run(run_decisions_detect(args)))
+
+    # normalize subcommand
+    normalize_parser = dec_subs.add_parser(
+        "normalize",
+        help="Normalize/cluster decisions and factors",
+        description="Cluster semantically similar decisions and factors across texts.",
+    )
+    add_decisions_normalize_args(normalize_parser)
+    normalize_parser.set_defaults(func=lambda args: asyncio.run(run_decisions_normalize(args)))
+
+    # aggregate subcommand
+    aggregate_parser = dec_subs.add_parser(
+        "aggregate",
+        help="Aggregate decision/factor statistics",
+        description="Compute frequency counts, polarity distribution, and cross-text coverage.",
+    )
+    add_decisions_aggregate_args(aggregate_parser)
+    aggregate_parser.set_defaults(func=lambda args: asyncio.run(run_decisions_aggregate(args)))
+
+    # viz subcommand
+    viz_parser = dec_subs.add_parser(
+        "viz",
+        help="Generate decision/factor visualizations",
+        description="Create frequency charts, polarity distributions, and decision-factor network graphs.",
+    )
+    add_decisions_viz_args(viz_parser)
+    viz_parser.set_defaults(func=lambda args: asyncio.run(run_decisions_viz(args)))
 
 
 def main() -> int:

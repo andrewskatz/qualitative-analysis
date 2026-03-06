@@ -33,6 +33,16 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def _invlogit_to_scale(logit_values, scale_min=0, scale_max=100):
+    """Convert logit values to the configured score scale.
+
+    Applies the inverse-logit (sigmoid) transformation and maps the
+    resulting (0, 1) probability to [scale_min, scale_max].
+    """
+    prob = 1 / (1 + np.exp(-logit_values))
+    return prob * (scale_max - scale_min) + scale_min
+
+
 def check_pymc_available() -> bool:
     """Check if PyMC and required Bayesian dependencies are installed."""
     try:
@@ -65,14 +75,16 @@ def prepare_beta_data(
     entity_col: str = "entity",
     group_col: str = "group",
     n_runs: Optional[int] = None,
+    scale_min: int = 0,
+    scale_max: int = 100,
 ) -> Dict[str, Any]:
     """
     Prepare run-level data for Beta-likelihood Bayesian modeling.
 
     Reads ``{dim}_run{k}`` columns from the scored DataFrame, reshapes to
     long format (one row per observation = entity x participant x run),
-    rescales scores from [0, 100] to the open interval (0, 1), and builds
-    integer index arrays required by PyMC.
+    rescales scores from [scale_min, scale_max] to the open interval (0, 1),
+    and builds integer index arrays required by PyMC.
 
     Args:
         scores_df: DataFrame with scored entities. Must contain columns
@@ -144,12 +156,26 @@ def prepare_beta_data(
 
     long_df = pd.DataFrame(records)
 
-    # Rescale [0, 100] -> (0, 1) using Smithson & Verkuilen (2006) squeeze.
+    # Rescale [scale_min, scale_max] -> (0, 1) using Smithson & Verkuilen (2006) squeeze.
+    # First normalize to [0, 1], then apply S&V: y = (x_norm * (N-1) + 0.5) / N
     # N is computed per dimension (the sample size of the variable being modeled),
     # since each dimension is fit independently.
     eps = 1e-6
+    scale_range = scale_max - scale_min
     dim_counts = long_df.groupby("dimension")["score"].transform("count")
-    long_df["y"] = (long_df["score"] * (dim_counts - 1) + 0.5) / (dim_counts * 100.0)
+    x_norm = (long_df["score"] - scale_min) / scale_range
+    long_df["y"] = (x_norm * (dim_counts - 1) + 0.5) / dim_counts
+
+    # Warn about boundary scores (exactly scale_min or scale_max) — they squeeze
+    # to near the Beta boundaries and can cause steep gradients during sampling.
+    boundary_mask = long_df["score"].isin([float(scale_min), float(scale_max)])
+    if boundary_mask.any():
+        n_boundary = int(boundary_mask.sum())
+        logger.warning(
+            f"Found {n_boundary} boundary score(s) ({scale_min} or {scale_max}). "
+            f"These may cause sampling difficulties. Consider using a "
+            f"wider squeeze or censoring the data."
+        )
 
     # Clip to ensure strictly within (0, 1)
     long_df["y"] = long_df["y"].clip(eps, 1.0 - eps)
@@ -201,6 +227,7 @@ class BayesianModelResult:
     trace: Any  # arviz.InferenceData
     diagnostics: Dict[str, Any]
     converged: bool
+    model: Any = None  # PyMC model (cached for PPC / log-likelihood)
 
 
 class BayesianEntityModel:
@@ -242,6 +269,8 @@ class BayesianEntityModel:
         group_col: str = "group",
         n_runs: Optional[int] = None,
         prior_config: Optional[Dict[str, Any]] = None,
+        scale_min: int = 0,
+        scale_max: int = 100,
     ):
         """
         Initialize the Bayesian model.
@@ -254,6 +283,8 @@ class BayesianEntityModel:
             entity_col: Column name for entities.
             group_col: Column name for group membership.
             n_runs: Number of scoring runs (auto-detected if None).
+            scale_min: Minimum score value on the scoring scale (default 0).
+            scale_max: Maximum score value on the scoring scale (default 100).
             prior_config: Optional dict overriding prior hyperparameters. Supported keys:
                 - ``mu_pop_sigma`` (default 1.5): SD for population mean Normal prior.
                 - ``sigma_entity_sigma`` (default 2.0): SD for entity HalfNormal prior.
@@ -269,6 +300,9 @@ class BayesianEntityModel:
         self.participant_col = participant_col
         self.entity_col = entity_col
         self.group_col = group_col
+        self.scale_min = scale_min
+        self.scale_max = scale_max
+        self.scale_range = scale_max - scale_min
 
         # Merge user overrides into defaults
         self.prior_config = {**self.DEFAULT_PRIOR_CONFIG}
@@ -285,7 +319,8 @@ class BayesianEntityModel:
 
         # Prepare data
         self.data = prepare_beta_data(
-            scores_df, dimensions, participant_col, entity_col, group_col, n_runs
+            scores_df, dimensions, participant_col, entity_col, group_col, n_runs,
+            scale_min=scale_min, scale_max=scale_max,
         )
 
         # Store results per dimension
@@ -515,6 +550,7 @@ class BayesianEntityModel:
             trace=trace,
             diagnostics=diagnostics,
             converged=diagnostics["converged"],
+            model=model,
         )
         self.results[dimension] = result
 
@@ -603,6 +639,15 @@ class BayesianEntityModel:
         #   400 <= ESS < 1000: "marginal" — posterior summaries may be unreliable
         #   ESS < 400: not converged
         ess_min = min(ess_bulk_min, ess_tail_min)
+
+        # Check for NaN R-hat (indicates catastrophic sampling failure)
+        if np.isnan(rhat_max):
+            logger.error(
+                f"  Diagnostics [{dimension}]: R-hat is NaN — MCMC chains "
+                f"may not have produced valid samples. Re-run with more "
+                f"tuning steps or check model specification."
+            )
+
         converged = (
             rhat_max < 1.01
             and ess_min >= 1000
@@ -678,11 +723,13 @@ class BayesianEntityModel:
                 for var in scalar_vars:
                     if var in post:
                         samples = post[var].values.flatten()
+                        hdi_bounds = az.hdi(samples, hdi_prob=0.94)
                         scalar_summary[var] = {
                             "mean": round(float(np.mean(samples)), 4),
                             "std": round(float(np.std(samples)), 4),
-                            "hdi_3%": round(float(np.percentile(samples, 3)), 4),
-                            "hdi_97%": round(float(np.percentile(samples, 97)), 4),
+                            "hdi_lower": round(float(hdi_bounds[0]), 4),
+                            "hdi_upper": round(float(hdi_bounds[1]), 4),
+                            "hdi_prob": 0.94,
                         }
 
                 # Group effects (logit scale)
@@ -690,20 +737,27 @@ class BayesianEntityModel:
                 if "group_effect" in post:
                     for i, gname in enumerate(self.data["group_names"]):
                         samples = post["group_effect"].values[:, :, i].flatten()
+                        hdi_logit = az.hdi(samples, hdi_prob=0.94)
                         group_effects[gname] = {
                             "mean_logit": round(float(np.mean(samples)), 4),
                             "std_logit": round(float(np.std(samples)), 4),
-                            "hdi_3%_logit": round(float(np.percentile(samples, 3)), 4),
-                            "hdi_97%_logit": round(float(np.percentile(samples, 97)), 4),
+                            "hdi_lower_logit": round(float(hdi_logit[0]), 4),
+                            "hdi_upper_logit": round(float(hdi_logit[1]), 4),
+                            "hdi_prob": 0.94,
                         }
                         # Also compute on probability scale (0-100)
                         mu_pop_samples = post["mu_pop"].values.flatten()
+                        assert len(mu_pop_samples) == len(samples), (
+                            f"mu_pop and group_effect sample lengths differ: "
+                            f"{len(mu_pop_samples)} vs {len(samples)}"
+                        )
                         # Group mean on probability scale
                         group_logit = mu_pop_samples + samples
-                        group_prob = 1 / (1 + np.exp(-group_logit)) * 100
+                        group_prob = _invlogit_to_scale(group_logit, self.scale_min, self.scale_max)
+                        hdi_score = az.hdi(group_prob, hdi_prob=0.94)
                         group_effects[gname]["mean_score"] = round(float(np.mean(group_prob)), 2)
-                        group_effects[gname]["hdi_3%_score"] = round(float(np.percentile(group_prob, 3)), 2)
-                        group_effects[gname]["hdi_97%_score"] = round(float(np.percentile(group_prob, 97)), 2)
+                        group_effects[gname]["hdi_lower_score"] = round(float(hdi_score[0]), 2)
+                        group_effects[gname]["hdi_upper_score"] = round(float(hdi_score[1]), 2)
 
             summaries[dim] = {
                 "parameters": scalar_summary,
@@ -718,24 +772,29 @@ class BayesianEntityModel:
     # ------------------------------------------------------------------
 
     def compute_group_contrasts(
-        self, rope_delta: float = 5.0
+        self, rope_delta: float = 5.0, scale: str = "probability",
     ) -> Dict[str, Any]:
         """
         Compute posterior group contrasts for all dimensions.
 
         For each pair of groups, computes:
-        - Posterior mean difference (on 0-100 score scale)
-        - 95% HDI of the difference
+        - Posterior mean difference
+        - 94% HDI of the difference
         - P(direction): probability that group A > group B
         - ROPE analysis: proportion of posterior within [-delta, +delta]
 
         Args:
-            rope_delta: ROPE half-width on the 0-100 scale (default 5.0).
+            rope_delta: ROPE half-width (default 5.0 on 0-100 scale, or
+                logit-scale units if ``scale="logit"``).
+            scale: ``"probability"`` (default, 0-100) or ``"logit"``.
 
         Returns:
             Dict with per-dimension, per-pair contrast summaries.
         """
         import arviz as az
+
+        if scale not in ("probability", "logit"):
+            raise ValueError(f"scale must be 'probability' or 'logit', got '{scale}'")
 
         contrasts = {}
 
@@ -755,20 +814,26 @@ class BayesianEntityModel:
                     eff_b = post["group_effect"].values[:, :, j].flatten()
                     mu_pop = post["mu_pop"].values.flatten()
 
-                    # Convert to probability scale (0-100)
-                    prob_a = 1 / (1 + np.exp(-(mu_pop + eff_a))) * 100
-                    prob_b = 1 / (1 + np.exp(-(mu_pop + eff_b))) * 100
-                    delta = prob_a - prob_b
+                    if scale == "probability":
+                        # Convert to score scale
+                        prob_a = _invlogit_to_scale(mu_pop + eff_a, self.scale_min, self.scale_max)
+                        prob_b = _invlogit_to_scale(mu_pop + eff_b, self.scale_min, self.scale_max)
+                        delta = prob_a - prob_b
+                    else:
+                        # Logit scale (natural model parameterization)
+                        delta = eff_a - eff_b
 
                     pair_key = f"{g_a}_vs_{g_b}"
                     hdi_bounds = az.hdi(delta, hdi_prob=0.94)
                     dim_contrasts[pair_key] = {
                         "group_a": g_a,
                         "group_b": g_b,
+                        "scale": scale,
                         "mean_diff": round(float(np.mean(delta)), 3),
                         "std_diff": round(float(np.std(delta)), 3),
-                        "hdi_3%": round(float(hdi_bounds[0]), 3),
-                        "hdi_97%": round(float(hdi_bounds[1]), 3),
+                        "hdi_lower": round(float(hdi_bounds[0]), 3),
+                        "hdi_upper": round(float(hdi_bounds[1]), 3),
+                        "hdi_prob": 0.94,
                         "p_a_gt_b": round(float(np.mean(delta > 0)), 4),
                         "p_b_gt_a": round(float(np.mean(delta < 0)), 4),
                         "rope_delta": rope_delta,
@@ -781,6 +846,92 @@ class BayesianEntityModel:
                         "p_below_rope": round(
                             float(np.mean(delta < -rope_delta)), 4
                         ),
+                    }
+
+            contrasts[dim] = dim_contrasts
+
+        return contrasts
+
+    def compute_marginal_group_contrasts(
+        self, rope_delta: float = 5.0, n_entity_samples: int = 50,
+    ) -> Dict[str, Any]:
+        """
+        Compute marginalised group contrasts averaging over entity & participant effects.
+
+        Unlike ``compute_group_contrasts`` (which evaluates the contrast at the
+        "typical entity / typical participant" point), this method integrates
+        over the posterior distributions of entity and participant effects so
+        the reported difference reflects the expected gap *across all entities
+        and participants in the study*.
+
+        For each posterior draw we compute::
+
+            score_g = mean_over_entities[ invlogit(theta[e] + group_effect[g]) ]
+
+        Participant effects are zero-mean, so they integrate out.  Entity
+        effects are explicitly averaged using the posterior draws.
+
+        Args:
+            rope_delta: ROPE half-width on the 0-100 scale (default 5.0).
+            n_entity_samples: Max entities to average over per draw (for speed).
+
+        Returns:
+            Dict[dim] -> Dict[pair] -> contrast summary.
+        """
+        import arviz as az
+
+        contrasts: Dict[str, Any] = {}
+
+        for dim, result in self.results.items():
+            post = result.trace.posterior
+            group_names = self.data["group_names"]
+            n_groups = len(group_names)
+
+            # theta: (chains, draws, n_entities)
+            theta = post["theta"].values
+            n_chains, n_draws, n_entities = theta.shape
+
+            # Sub-sample entities if very many
+            entity_idx = np.arange(n_entities)
+            if n_entities > n_entity_samples:
+                rng = np.random.default_rng(42)
+                entity_idx = rng.choice(n_entities, n_entity_samples, replace=False)
+
+            # Compute group-marginal scores: for each posterior draw,
+            # average invlogit(theta[e] + group_effect[g]) over entities.
+            # Shape per group: (n_chains * n_draws,)
+            group_scores = []
+            for g in range(n_groups):
+                eff_g = post["group_effect"].values[:, :, g]  # (chains, draws)
+                # Broadcast: theta[:,:,entities] + eff_g[:,:,None]
+                logits = theta[:, :, entity_idx] + eff_g[:, :, np.newaxis]
+                probs = _invlogit_to_scale(logits, self.scale_min, self.scale_max)  # (chains, draws, n_sub_entities)
+                mean_score = probs.mean(axis=2)  # average over entities -> (chains, draws)
+                group_scores.append(mean_score.flatten())
+
+            dim_contrasts: Dict[str, Any] = {}
+            for i in range(n_groups):
+                for j in range(i + 1, n_groups):
+                    g_a, g_b = group_names[i], group_names[j]
+                    delta = group_scores[i] - group_scores[j]
+
+                    hdi_bounds = az.hdi(delta, hdi_prob=0.94)
+                    pair_key = f"{g_a}_vs_{g_b}"
+                    dim_contrasts[pair_key] = {
+                        "group_a": g_a,
+                        "group_b": g_b,
+                        "contrast_type": "marginal",
+                        "mean_diff": round(float(np.mean(delta)), 3),
+                        "std_diff": round(float(np.std(delta)), 3),
+                        "hdi_lower": round(float(hdi_bounds[0]), 3),
+                        "hdi_upper": round(float(hdi_bounds[1]), 3),
+                        "hdi_prob": 0.94,
+                        "p_a_gt_b": round(float(np.mean(delta > 0)), 4),
+                        "p_b_gt_a": round(float(np.mean(delta < 0)), 4),
+                        "rope_delta": rope_delta,
+                        "p_in_rope": round(float(np.mean(np.abs(delta) < rope_delta)), 4),
+                        "p_above_rope": round(float(np.mean(delta > rope_delta)), 4),
+                        "p_below_rope": round(float(np.mean(delta < -rope_delta)), 4),
                     }
 
             contrasts[dim] = dim_contrasts
@@ -816,9 +967,11 @@ class BayesianEntityModel:
             var_group = sig_group ** 2
             var_entity = sig_entity ** 2
             var_participant = sig_participant ** 2
-            # Run-level variance from Beta: Var(y) ~ mu(1-mu)/(kappa+1)
-            # On logit scale, approximate as pi^2 / (3 * kappa)
-            var_run = (np.pi ** 2) / (3.0 * kappa_vals)
+            # Run-level variance from Beta on logit scale.
+            # Delta-method: Var_logit ≈ 1 / (mu * (1-mu) * (kappa+1))
+            # Using mu ≈ 0.5 (maximum variance case): Var_logit ≈ 4 / (kappa+1)
+            # This is a conservative (upper-bound) approximation.
+            var_run = 4.0 / (kappa_vals + 1)
 
             total_var = var_group + var_entity + var_participant + var_run
 
@@ -835,23 +988,27 @@ class BayesianEntityModel:
             icc_results[dim] = {
                 "icc_group": {
                     "mean": round(float(np.mean(icc_group)), 4),
-                    "hdi_3%": round(float(hdi_group[0]), 4),
-                    "hdi_97%": round(float(hdi_group[1]), 4),
+                    "hdi_lower": round(float(hdi_group[0]), 4),
+                    "hdi_upper": round(float(hdi_group[1]), 4),
+                    "hdi_prob": 0.94,
                 },
                 "icc_entity": {
                     "mean": round(float(np.mean(icc_entity)), 4),
-                    "hdi_3%": round(float(hdi_entity[0]), 4),
-                    "hdi_97%": round(float(hdi_entity[1]), 4),
+                    "hdi_lower": round(float(hdi_entity[0]), 4),
+                    "hdi_upper": round(float(hdi_entity[1]), 4),
+                    "hdi_prob": 0.94,
                 },
                 "icc_participant": {
                     "mean": round(float(np.mean(icc_participant)), 4),
-                    "hdi_3%": round(float(hdi_participant[0]), 4),
-                    "hdi_97%": round(float(hdi_participant[1]), 4),
+                    "hdi_lower": round(float(hdi_participant[0]), 4),
+                    "hdi_upper": round(float(hdi_participant[1]), 4),
+                    "hdi_prob": 0.94,
                 },
                 "icc_run": {
                     "mean": round(float(np.mean(icc_run)), 4),
-                    "hdi_3%": round(float(hdi_run[0]), 4),
-                    "hdi_97%": round(float(hdi_run[1]), 4),
+                    "hdi_lower": round(float(hdi_run[0]), 4),
+                    "hdi_upper": round(float(hdi_run[1]), 4),
+                    "hdi_prob": 0.94,
                 },
                 "variance_components": {
                     "sigma_group": round(float(np.mean(sig_group)), 4),
@@ -885,21 +1042,16 @@ class BayesianEntityModel:
             # Raw entity means (on 0-100 scale)
             raw_means = dim_df.groupby("entity")["score"].mean()
 
-            # Posterior entity means (theta on logit scale -> probability scale)
+            # Posterior entity means — compute invlogit per sample, then average
+            # (avoids Jensen's inequality bias from transforming point estimates)
             theta_samples = post["theta"].values  # (chains, draws, n_entities)
-            theta_mean = theta_samples.mean(axis=(0, 1))  # (n_entities,)
-            theta_sd = theta_samples.std(axis=(0, 1))
-
-            # Convert to probability scale (0-100)
-            posterior_prob = 1 / (1 + np.exp(-theta_mean)) * 100
-            # Delta method: Var(g(θ)) ≈ g'(θ_mean)² * Var(θ)
-            # where g = sigmoid, g' = sigmoid(θ)(1 - sigmoid(θ))
-            sigmoid_mean = 1 / (1 + np.exp(-theta_mean))
-            posterior_sd_prob = theta_sd * sigmoid_mean * (1 - sigmoid_mean) * 100
+            prob_samples = _invlogit_to_scale(theta_samples, self.scale_min, self.scale_max)  # per-sample invlogit
+            posterior_prob = prob_samples.mean(axis=(0, 1))  # (n_entities,)
+            posterior_sd_prob = prob_samples.std(axis=(0, 1))
 
             # Grand mean on probability scale (for standard shrinkage formula)
             mu_pop_samples = post["mu_pop"].values.flatten()
-            grand_mean = float(np.mean(1 / (1 + np.exp(-mu_pop_samples)) * 100))
+            grand_mean = float(np.mean(_invlogit_to_scale(mu_pop_samples, self.scale_min, self.scale_max)))
 
             entity_names = self.data["entity_names"]
             records = []
@@ -916,11 +1068,17 @@ class BayesianEntityModel:
                     not np.isnan(raw)
                     and abs(raw - grand_mean) > 1.0
                 ):
-                    shrinkage_pct = round(
+                    raw_shrinkage = round(
                         (raw - post_mean) / (raw - grand_mean) * 100, 2
+                    )
+                    # Clamp to [0, 100] — values outside indicate overshoot
+                    shrinkage_pct = max(0.0, min(100.0, raw_shrinkage))
+                    shrinkage_note = (
+                        "clamped" if raw_shrinkage != shrinkage_pct else None
                     )
                 else:
                     shrinkage_pct = 0.0
+                    shrinkage_note = None
 
                 records.append({
                     "entity": ename,
@@ -928,6 +1086,7 @@ class BayesianEntityModel:
                     "posterior_mean": round(float(post_mean), 2),
                     "posterior_sd": round(float(post_sd), 2),
                     "shrinkage_pct": shrinkage_pct,
+                    "shrinkage_note": shrinkage_note,
                     "n_observations": int(
                         dim_df[dim_df["entity"] == ename].shape[0]
                     ),
@@ -957,12 +1116,15 @@ class BayesianEntityModel:
                 prior_pred = pm.sample_prior_predictive(draws=draws)
         return prior_pred
 
-    def posterior_predictive_check(self, dimension: str) -> Any:
+    def posterior_predictive_check(
+        self, dimension: str, random_seed: Optional[int] = None,
+    ) -> Any:
         """
         Generate posterior predictive samples for a fitted dimension.
 
         Args:
             dimension: Dimension to check (must be already fitted).
+            random_seed: Optional random seed for reproducibility.
 
         Returns:
             ArviZ InferenceData with posterior predictive samples.
@@ -972,13 +1134,16 @@ class BayesianEntityModel:
         if dimension not in self.results:
             raise ValueError(f"Dimension '{dimension}' not yet fitted")
 
-        model = self.build_model(dimension)
-        trace = self.results[dimension].trace
+        result = self.results[dimension]
+        model = result.model if result.model is not None else self.build_model(dimension)
+        trace = result.trace
 
         with model:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
-                ppc = pm.sample_posterior_predictive(trace)
+                ppc = pm.sample_posterior_predictive(
+                    trace, random_seed=random_seed,
+                )
         return ppc
 
     # ------------------------------------------------------------------
@@ -1212,11 +1377,18 @@ class BayesianEntityModel:
             ic="loo",
         )
 
-        # Extract results
+        # Extract results — use the correlated SE from az.compare() which
+        # accounts for the fact that both models are evaluated on the same data.
+        # The naive sqrt(se1² + se2²) overestimates uncertainty.
         elpd_full = float(loo_full.elpd_loo)
         elpd_reduced = float(loo_reduced.elpd_loo)
         elpd_diff = elpd_full - elpd_reduced
-        se_diff = float(np.sqrt(loo_full.se**2 + loo_reduced.se**2))
+        # az.compare orders by rank; the second row has dse relative to the best
+        if "dse" in comparison.columns:
+            se_diff = float(comparison["dse"].iloc[1])
+        else:
+            # Fallback for older arviz versions
+            se_diff = float(np.sqrt(loo_full.se**2 + loo_reduced.se**2))
 
         # Determine preferred model
         # Positive diff means full model is better
@@ -1340,6 +1512,23 @@ class BayesianEntityModel:
 
                 interpretation = self._interpret_bayes_factor(bf10)
 
+                # M5: Assess reliability of the Savage-Dickey estimate.
+                # When the posterior contrast is far from zero, KDE tail-density
+                # estimation becomes unreliable.
+                contrast_mean = float(np.mean(posterior_contrast))
+                contrast_sd = float(np.std(posterior_contrast))
+                if contrast_sd > 0 and abs(contrast_mean / contrast_sd) > 3:
+                    reliability = "low"
+                    logger.warning(
+                        f"Bayes Factor [{dimension}] {g_a}_vs_{g_b}: "
+                        f"posterior contrast mean ({contrast_mean:.2f}) is "
+                        f">{3} SDs from zero — Savage-Dickey density ratio "
+                        f"at 0 is estimated in the far tail and may be "
+                        f"numerically unreliable."
+                    )
+                else:
+                    reliability = "high"
+
                 pair_key = f"{g_a}_vs_{g_b}"
                 bf_results[pair_key] = {
                     "group_a": g_a,
@@ -1349,6 +1538,7 @@ class BayesianEntityModel:
                     "prior_density_at_0": round(prior_at_0, 6),
                     "posterior_density_at_0": round(posterior_at_0, 6) if not np.isnan(posterior_at_0) else None,
                     "interpretation": interpretation,
+                    "reliability": reliability,
                 }
 
                 logger.info(
@@ -1390,6 +1580,178 @@ class BayesianEntityModel:
             return "extreme evidence for H0"
 
     # ------------------------------------------------------------------
+    # Prior sensitivity analysis
+    # ------------------------------------------------------------------
+
+    def prior_sensitivity_check(
+        self,
+        dimension: str,
+        alternative_configs: Optional[List[Dict[str, Any]]] = None,
+        chains: int = 4,
+        draws: int = 1000,
+        tune: int = 500,
+        target_accept: float = 0.95,
+        sampler: str = "nutpie",
+        random_seed: int = 42,
+    ) -> Dict[str, Any]:
+        """
+        Re-fit a dimension under alternative prior configurations.
+
+        Compares the original fit with 4 alternative prior specs to assess
+        whether group contrast direction, ICC ordering, and posterior means
+        are robust to prior choices.
+
+        Args:
+            dimension: Dimension to check (must already be fitted).
+            alternative_configs: Optional list of prior config dicts.
+                If None, 4 built-in alternatives are used.
+            chains: Number of MCMC chains per re-fit.
+            draws: Number of draws per chain.
+            tune: Number of tuning steps per chain.
+            target_accept: Target acceptance rate.
+            sampler: Sampler backend.
+            random_seed: Random seed.
+
+        Returns:
+            Dict with per-config summaries and a stability assessment.
+        """
+        if dimension not in self.results:
+            raise ValueError(f"Dimension '{dimension}' not yet fitted")
+
+        import pymc as pm  # noqa: F811
+
+        if alternative_configs is None:
+            base = self.DEFAULT_PRIOR_CONFIG.copy()
+            alternative_configs = [
+                # 1. Wider priors (less informative)
+                {
+                    **base,
+                    "mu_pop_sigma": base["mu_pop_sigma"] * 2,
+                    "sigma_entity_sigma": base["sigma_entity_sigma"] * 2,
+                    "sigma_group_sigma": base["sigma_group_sigma"] * 2,
+                    "sigma_participant_sigma": base["sigma_participant_sigma"] * 2,
+                    "_label": "wider_priors",
+                },
+                # 2. Narrower priors (more informative)
+                {
+                    **base,
+                    "mu_pop_sigma": base["mu_pop_sigma"] * 0.5,
+                    "sigma_entity_sigma": base["sigma_entity_sigma"] * 0.5,
+                    "sigma_group_sigma": base["sigma_group_sigma"] * 0.5,
+                    "sigma_participant_sigma": base["sigma_participant_sigma"] * 0.5,
+                    "_label": "narrower_priors",
+                },
+                # 3. Diffuse kappa prior (less precise observations)
+                {
+                    **base,
+                    "kappa_alpha": 1.0,
+                    "kappa_beta": 0.01,
+                    "_label": "diffuse_kappa",
+                },
+                # 4. Informative kappa prior (high precision assumed)
+                {
+                    **base,
+                    "kappa_alpha": 10.0,
+                    "kappa_beta": 0.2,
+                    "_label": "informative_kappa",
+                },
+            ]
+
+        original_config = self.prior_config.copy()
+        original_result = self.results[dimension]
+        original_post = original_result.trace.posterior
+
+        # Summarise the original fit
+        mu_pop_orig = float(np.mean(original_post["mu_pop"].values.flatten()))
+        group_names = self.data["group_names"]
+        orig_group_means = {}
+        for gi, gname in enumerate(group_names):
+            eff = original_post["group_effect"].values[:, :, gi].flatten()
+            mu = original_post["mu_pop"].values.flatten()
+            orig_group_means[gname] = float(
+                np.mean(_invlogit_to_scale(mu + eff, self.scale_min, self.scale_max))
+            )
+
+        results = [{
+            "config": "original",
+            "mu_pop_mean": round(mu_pop_orig, 3),
+            "group_means": {k: round(v, 2) for k, v in orig_group_means.items()},
+            "converged": original_result.converged,
+        }]
+
+        for alt_cfg in alternative_configs:
+            label = alt_cfg.pop("_label", f"config_{len(results)}")
+            logger.info(f"Prior sensitivity: fitting '{label}' for {dimension}")
+
+            # Temporarily swap priors
+            self.prior_config = {**self.DEFAULT_PRIOR_CONFIG, **alt_cfg}
+
+            try:
+                alt_result = self.fit(
+                    dimension,
+                    chains=chains,
+                    draws=draws,
+                    tune=tune,
+                    target_accept=target_accept,
+                    sampler=sampler,
+                    random_seed=random_seed,
+                )
+                alt_post = alt_result.trace.posterior
+
+                mu_pop_alt = float(np.mean(alt_post["mu_pop"].values.flatten()))
+                alt_group_means = {}
+                for gi, gname in enumerate(group_names):
+                    eff = alt_post["group_effect"].values[:, :, gi].flatten()
+                    mu = alt_post["mu_pop"].values.flatten()
+                    alt_group_means[gname] = float(
+                        np.mean(_invlogit_to_scale(mu + eff, self.scale_min, self.scale_max))
+                    )
+
+                results.append({
+                    "config": label,
+                    "mu_pop_mean": round(mu_pop_alt, 3),
+                    "group_means": {k: round(v, 2) for k, v in alt_group_means.items()},
+                    "converged": alt_result.converged,
+                })
+            except Exception as e:
+                logger.warning(f"Prior sensitivity fit failed for '{label}': {e}")
+                results.append({
+                    "config": label,
+                    "error": str(e),
+                    "converged": False,
+                })
+
+        # Restore original priors and result
+        self.prior_config = original_config
+        self.results[dimension] = original_result
+
+        # Stability assessment: check if group ordering is consistent
+        group_orderings = []
+        for r in results:
+            if "group_means" in r:
+                ordering = tuple(sorted(
+                    r["group_means"].keys(),
+                    key=lambda g: r["group_means"][g],
+                    reverse=True,
+                ))
+                group_orderings.append(ordering)
+
+        all_agree = len(set(group_orderings)) <= 1
+        stability = "stable" if all_agree else "sensitive"
+
+        logger.info(
+            f"Prior sensitivity [{dimension}]: {len(results)} configs tested, "
+            f"stability={stability}"
+        )
+
+        return {
+            "dimension": dimension,
+            "configs": results,
+            "group_order_stable": all_agree,
+            "stability": stability,
+        }
+
+    # ------------------------------------------------------------------
     # Output / serialization
     # ------------------------------------------------------------------
 
@@ -1422,11 +1784,17 @@ class BayesianEntityModel:
             json.dump(summaries, f, indent=2, default=str)
         logger.info(f"Saved model summary to {output_dir / 'model_summary.json'}")
 
-        # Group contrasts
+        # Group contrasts (conditional — at typical entity/participant)
         contrasts = self.compute_group_contrasts(rope_delta=rope_delta)
         with open(output_dir / "group_contrasts.json", "w") as f:
             json.dump(contrasts, f, indent=2, default=str)
         logger.info(f"Saved group contrasts to {output_dir / 'group_contrasts.json'}")
+
+        # Group contrasts (marginal — averaged over entities)
+        marginal_contrasts = self.compute_marginal_group_contrasts(rope_delta=rope_delta)
+        with open(output_dir / "group_contrasts_marginal.json", "w") as f:
+            json.dump(marginal_contrasts, f, indent=2, default=str)
+        logger.info(f"Saved marginal group contrasts to {output_dir / 'group_contrasts_marginal.json'}")
 
         # ICC decomposition
         icc = self.compute_icc()
@@ -1527,8 +1895,8 @@ class BayesianVisualizer:
             for p_idx, pair_key in enumerate(pair_keys):
                 c = dim_data[pair_key]
                 mean_diff = c["mean_diff"]
-                hdi_lo = c["hdi_3%"]
-                hdi_hi = c["hdi_97%"]
+                hdi_lo = c["hdi_lower"]
+                hdi_hi = c["hdi_upper"]
 
                 color = self._get_group_color(p_idx)
                 label = f"{c['group_a']} vs {c['group_b']}"
@@ -1550,7 +1918,7 @@ class BayesianVisualizer:
                 f"{dim_data[pk]['group_a']} vs\n{dim_data[pk]['group_b']}"
                 for pk in pair_keys
             ])
-            ax.set_xlabel("Difference (0-100 scale)")
+            ax.set_xlabel(f"Difference ({self.model.scale_min}-{self.model.scale_max} scale)")
             ax.set_title(dim.capitalize())
             ax.legend(loc="best", fontsize=8)
 
@@ -1593,8 +1961,8 @@ class BayesianVisualizer:
 
             for g_idx, gname in enumerate(group_names):
                 eff = post["group_effect"].values[:, :, g_idx].flatten()
-                # Convert to probability scale (0-100)
-                group_prob = 1 / (1 + np.exp(-(mu_pop + eff))) * 100
+                # Convert to score scale
+                group_prob = _invlogit_to_scale(mu_pop + eff, self.model.scale_min, self.model.scale_max)
 
                 color = self._get_group_color(g_idx)
                 ax.hist(group_prob, bins=50, alpha=0.4, color=color,
@@ -1602,7 +1970,7 @@ class BayesianVisualizer:
                 ax.axvline(np.mean(group_prob), color=color, linewidth=2,
                            linestyle="--")
 
-            ax.set_xlabel("Score (0-100)")
+            ax.set_xlabel(f"Score ({self.model.scale_min}-{self.model.scale_max})")
             if d_idx == 0:
                 ax.set_ylabel("Density")
             ax.set_title(dim.capitalize())
@@ -1696,14 +2064,15 @@ class BayesianVisualizer:
 
             scatter = ax.scatter(raw, post, c=n_obs, cmap="viridis",
                                  alpha=0.5, s=15, edgecolors="none")
-            ax.plot([0, 100], [0, 100], "k--", alpha=0.3, linewidth=1)
+            ax.plot([self.model.scale_min, self.model.scale_max],
+                    [self.model.scale_min, self.model.scale_max], "k--", alpha=0.3, linewidth=1)
 
-            ax.set_xlabel("Raw Mean (0-100)")
+            ax.set_xlabel(f"Raw Mean ({self.model.scale_min}-{self.model.scale_max})")
             if d_idx == 0:
-                ax.set_ylabel("Posterior Mean (0-100)")
+                ax.set_ylabel(f"Posterior Mean ({self.model.scale_min}-{self.model.scale_max})")
             ax.set_title(dim.capitalize())
-            ax.set_xlim(0, 100)
-            ax.set_ylim(0, 100)
+            ax.set_xlim(self.model.scale_min, self.model.scale_max)
+            ax.set_ylim(self.model.scale_min, self.model.scale_max)
             ax.set_aspect("equal")
 
             plt.colorbar(scatter, ax=ax, label="N observations", shrink=0.7)
@@ -1803,21 +2172,24 @@ class BayesianVisualizer:
                     n_rep = min(100, flat.shape[0])
                     rep_indices = np.linspace(0, flat.shape[0] - 1, n_rep, dtype=int)
                     for r_idx in rep_indices:
-                        # Inverse S&V squeeze: score = (y * N * 100 - 0.5) / (N - 1)
-                        rep_scores = (flat[r_idx] * n_dim * 100 - 0.5) / max(n_dim - 1, 1)
+                        # Inverse S&V squeeze: y -> [0,1] prob -> score scale
+                        prob = (flat[r_idx] * n_dim - 0.5) / max(n_dim - 1, 1)
+                        rep_scores = prob * self.model.scale_range + self.model.scale_min
                         ax.hist(
-                            rep_scores, bins=30, range=(0, 100),
+                            rep_scores, bins=30,
+                            range=(self.model.scale_min, self.model.scale_max),
                             alpha=0.03, color="#1f77b4", density=True,
                         )
 
                     # Plot observed
                     ax.hist(
-                        obs_scores, bins=30, range=(0, 100),
+                        obs_scores, bins=30,
+                        range=(self.model.scale_min, self.model.scale_max),
                         alpha=0.8, color="#d62728", density=True,
                         linewidth=1.5, histtype="step", label="Observed",
                     )
 
-                    ax.set_xlabel("Score (0-100)")
+                    ax.set_xlabel(f"Score ({self.model.scale_min}-{self.model.scale_max})")
                     if d_idx == 0:
                         ax.set_ylabel("Density")
                     ax.set_title(dim.capitalize())
@@ -1897,7 +2269,7 @@ class BayesianVisualizer:
                 post = self.model.results[dim].trace.posterior
                 mu_pop = post["mu_pop"].values.flatten()
                 eff = post["group_effect"].values[:, :, g_idx].flatten()
-                prob = 1 / (1 + np.exp(-(mu_pop + eff))) * 100
+                prob = _invlogit_to_scale(mu_pop + eff, self.model.scale_min, self.model.scale_max)
                 dim_samples.append(prob)
             # dim_samples[i] has shape (n_total_samples,)
             group_scores[gname] = np.column_stack(dim_samples)  # (n_samples, 3)
@@ -1923,7 +2295,10 @@ class BayesianVisualizer:
                 x2, y2 = self._bary_to_cart(*end_a)
                 ax.plot([x1, x2], [y1, y2], "k:", alpha=alpha, linewidth=0.5)
 
-        # Labels
+        # Labels — vertex-to-dimension mapping:
+        #   bottom-left  = dims[2]
+        #   bottom-right = dims[0]
+        #   top          = dims[1]
         label_offset = 0.08
         ax.text(0, -label_offset, dims[2].capitalize(),
                 ha="center", va="top", fontsize=12, fontweight="bold")
@@ -1931,6 +2306,11 @@ class BayesianVisualizer:
                 ha="center", va="top", fontsize=12, fontweight="bold")
         ax.text(0.5, np.sqrt(3) / 2 + label_offset, dims[1].capitalize(),
                 ha="center", va="bottom", fontsize=12, fontweight="bold")
+        ax.set_title(
+            "Group Posterior Ternary Plot\n"
+            f"(vertices: bottom-left={dims[2]}, bottom-right={dims[0]}, top={dims[1]})",
+            fontsize=11, style="italic", pad=10,
+        )
 
         # For each group, plot posterior samples and credible ellipse
         for g_idx, gname in enumerate(group_names):

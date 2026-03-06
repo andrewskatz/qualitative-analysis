@@ -1,0 +1,172 @@
+You are extracting factors specifically for a single target decision in the current section of a longer document.
+
+Decision to focus on:
+"{decision}"
+
+CRITICAL INSTRUCTION:
+The text may contain MULTIPLE decisions with MULTIPLE factors.
+Each factor in the text is linked to a SPECIFIC decision.
+You must extract ONLY the factors that are DIRECTLY stated as reasons for THIS SPECIFIC decision: "{decision}"
+
+DO NOT extract factors that are stated as reasons for OTHER decisions in the text.
+
+Return ONLY factors that influence or justify THIS decision: "{decision}". Each factor must be:
+- Explicitly evidenced in the provided text (avoid speculation)
+- Extracted from the text with minimal changes (resolve pronouns/coreferences but do not paraphrase or reformulate)
+- If a factor contains pronouns (they, them, it, we, us, etc.), replace them with their antecedents from the text
+- If a factor contains vague references (this, that, these, those), replace them with specific nouns
+- Make factors clear enough to understand in isolation
+- Do NOT add information not present in the text
+- DIFFERENT from the decision itself (do not repeat the decision as a factor)
+- A concrete reason, constraint, evidence, or consideration that EXPLAINS THIS SPECIFIC decision
+- Concise - extract just the factor phrase, not the entire sentence
+- Complete - extract ALL factors for THIS decision, even if downplayed or mentioned in passing
+- ONLY for THIS decision - do NOT extract factors for other decisions mentioned in the text
+
+CRITICAL: Extract factors as they appear in the text, but resolve pronouns and coreferences to make them clear in isolation. Do not paraphrase or reword beyond resolving pronouns.
+
+IMPORTANT: Extract factors even if they are downplayed or mentioned in passing:
+- "while X was clear" → extract X
+- "obviously Y" → extract Y
+- "it goes without saying that Z" → extract Z
+
+Text: "cost overruns last quarter"
+✅ CORRECT: "cost overruns last quarter"
+❌ WRONG: "cost overruns in previous quarter" (paraphrased)
+❌ WRONG: "cost overruns in the last quarter" (paraphrased)
+
+Text: "executive directive to cut opex 10%"
+✅ CORRECT: "executive directive to cut opex 10%"
+❌ WRONG: "executive directive to cut operational expenses" (paraphrased)
+❌ WRONG: "directive to reduce operating costs by 10%" (paraphrased)
+
+Text: "GPU capacity constraints"
+✅ CORRECT: "GPU capacity constraints"
+❌ WRONG: "limited GPU resources" (paraphrased)
+❌ WRONG: "insufficient GPU capacity" (paraphrased)
+
+Text: "migration risk for existing apps"
+✅ CORRECT: "migration risk for existing apps"
+❌ WRONG: "risk of migrating existing applications" (paraphrased)
+
+Text: "hallucination reduction"
+✅ CORRECT: "hallucination reduction"
+❌ WRONG: "reducing hallucinations" (paraphrased)
+❌ WRONG: "reduction in model hallucinations" (paraphrased)
+
+Text: "while the cost savings and scalability benefits were clear, there were concerns"
+✅ CORRECT: "cost savings and scalability benefits" (extract even though downplayed)
+✅ CORRECT: "concerns" (extract the opposing factor too)
+❌ WRONG: Skip "cost savings and scalability benefits" because it's downplayed
+
+Text: "Some teams had built significant expertise with their current database solutions and were worried about the learning curve and potential productivity loss"
+✅ CORRECT: "learning curve and potential productivity loss" (concise factor phrase)
+❌ WRONG: "Some teams had built significant expertise with their current database solutions and were worried about the learning curve and potential productivity loss" (too verbose, includes extra context)
+
+CRITICAL - Resolve pronouns to make factors clear:
+
+Text: "We decided to allow students to revise assignments because they would essentially give them back the assignment that they submitted."
+Decision: "allow students to revise assignments"
+✅ CORRECT: "teachers would essentially give students back the assignment that students submitted"
+❌ WRONG: "they would essentially give them back the assignment that they submitted" (unclear pronouns)
+
+Text: "We chose to implement the new policy because it would reduce costs."
+Decision: "implement the new policy"
+✅ CORRECT: "the new policy would reduce costs"
+❌ WRONG: "it would reduce costs" (unclear what "it" refers to)
+
+Text: "We decided to extend the school day because this gives students more instructional time."
+Decision: "extend the school day"
+✅ CORRECT: "extending the school day gives students more instructional time"
+❌ WRONG: "this gives students more instructional time" (unclear what "this" refers to)
+
+Text: "We adopted the mentoring program because they said it improves retention."
+Decision: "adopt the mentoring program"
+✅ CORRECT: "research shows the mentoring program improves retention"
+❌ WRONG: "they said it improves retention" (unclear who "they" are and what "it" refers to)
+
+CRITICAL EXAMPLES - MULTIPLE DECISIONS IN TEXT:
+
+Example 1:
+Text: "We decided to reduce budget because cost overruns. We also chose to pause training due to deadlines."
+Decision to focus on: "reduce budget"
+✅ CORRECT: Extract ONLY "cost overruns" (this is the stated reason for "reduce budget")
+❌ WRONG: Extract "deadlines" (this is the reason for "pause training", NOT "reduce budget")
+❌ WRONG: Extract both "cost overruns" and "deadlines" (only extract factors for THIS decision)
+
+Example 2:
+Text: "We decided to adopt cloud migration because cost savings. We chose to implement monitoring due to security concerns."
+Decision to focus on: "adopt cloud migration"
+✅ CORRECT: Extract ONLY "cost savings" (stated reason for "adopt cloud migration")
+❌ WRONG: Extract "security concerns" (this is for "implement monitoring", NOT "adopt cloud migration")
+
+Example 3:
+Text: "We decided to reduce training budget because cost overruns last quarter. We also chose to pause model training to audit data quality due to milestone deadlines approaching. We also chose to adopt transformer models due to GPU capacity constraints."
+Decision to focus on: "reduce training budget"
+✅ CORRECT: Extract ONLY "cost overruns last quarter" (stated reason for "reduce training budget")
+❌ WRONG: Extract "milestone deadlines approaching" (this is for "pause model training", NOT "reduce training budget")
+❌ WRONG: Extract "GPU capacity constraints" (this is for "adopt transformer models", NOT "reduce training budget")
+❌ WRONG: Extract all three factors (only extract factors for THIS SPECIFIC decision)
+
+EXAMPLES OF GOOD vs BAD FACTORS:
+
+Decision: "Adopt cloud migration in Q4"
+
+✅ GOOD factors (extracted with pronouns resolved):
+- "Cost savings from reduced infrastructure maintenance" (supporting)
+- "Concerns about data sovereignty and regulatory compliance" (opposing)
+- "Availability of cloud-native tools and services" (supporting)
+- "Risk of service disruption during migration" (opposing)
+- "Team has experience with AWS and Azure platforms" (supporting)
+
+❌ BAD factors:
+- "Adopt cloud migration" (repeats the decision - NOT a factor)
+- "Cloud migration in Q4" (repeats the decision - NOT a factor)
+- "Cloud" (too vague - what about cloud?)
+- "The team likes cloud technology" (not evidenced, speculative)
+- "Good idea" (too vague, not specific)
+- "Reduced infrastructure costs" (paraphrased from "Cost savings from reduced infrastructure maintenance")
+- "It would save money" (unclear pronoun - what is "it"?)
+
+Decision: "Reduce training budget by 10%"
+
+✅ GOOD factors (extracted with pronouns resolved):
+- "Executive directive to cut operational expenses" (supporting)
+- "Critical launch timelines at risk without training" (opposing)
+- "Cost overruns in previous quarter" (supporting)
+
+❌ BAD factors:
+- "Reduce training budget" (repeats the decision)
+- "Budget" (too vague)
+- "Training is expensive" (observation, not a factor for THIS decision)
+- "Directive to reduce costs" (paraphrased from "Executive directive to cut operational expenses")
+- "They told us to cut costs" (unclear pronoun - who is "they"?)
+
+IMPORTANT:
+1. ONLY extract factors for THIS SPECIFIC decision: "{decision}". If the text mentions other decisions with their own factors, DO NOT extract those factors.
+2. Do NOT include the decision itself as a factor. Factors should explain WHY the decision was made or what influences it, not repeat WHAT the decision is.
+3. Do NOT paraphrase beyond resolving pronouns. Extract the exact wording from the text, only replacing pronouns/coreferences with their antecedents.
+4. If the exact phrase is not in the text, do not make it up or reformulate it.
+5. Extract ALL factors for THIS decision, even if downplayed ("while X was clear", "obviously Y").
+6. Extract concise factor phrases, not entire sentences with extra context.
+7. Extract both supporting AND opposing factors for THIS decision.
+8. If a factor is stated as a reason for a DIFFERENT decision in the text, DO NOT extract it.
+9. Resolve pronouns (they, them, it, we, us, etc.) and vague references (this, that, etc.) to make factors clear in isolation.
+
+Classify polarity as:
+- supporting: favors or motivates the decision
+- opposing: argues against or raises risks/constraints
+- neutral: tangential or mixed without clear direction
+
+Output strict JSON with this schema (no prose):
+{
+  "factors": [
+    {"decision": "{decision}", "factor": "...", "polarity": "supporting|opposing|neutral"}
+  ]
+}
+
+Text to analyze:
+{text}
+
+
+

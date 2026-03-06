@@ -22,8 +22,11 @@ PACKAGE_VERSION = "0.1.0"
 def add_common_llm_args(parser: argparse.ArgumentParser) -> None:
     """
     Add common LLM-related arguments to a parser.
-    
-    Adds: --model, --base-url, --timeout, --log-llm
+
+    Adds: --model, --base-url, --timeout, --verbose/-v, --log-llm
+
+    For --provider and --enable-thinking, use add_provider_args() separately
+    since those vary by module.
     """
     parser.add_argument(
         "--model",
@@ -42,9 +45,34 @@ def add_common_llm_args(parser: argparse.ArgumentParser) -> None:
         help="HTTP timeout in seconds (default: 60.0)",
     )
     parser.add_argument(
-        "--log-llm",
+        "--verbose", "-v",
         action="store_true",
         help="Print LLM prompts and responses to the terminal",
+    )
+    parser.add_argument(
+        "--log-llm",
+        action="store_true",
+        help="(Alias for --verbose) Print LLM prompts and responses to the terminal",
+    )
+
+
+def add_provider_args(parser: argparse.ArgumentParser) -> None:
+    """
+    Add --provider and --enable-thinking arguments.
+
+    Call after add_common_llm_args() if the command supports multiple providers.
+    """
+    parser.add_argument(
+        "--provider",
+        default="ollama",
+        choices=["ollama", "mlx"],
+        help="LLM provider (default: ollama).",
+    )
+    parser.add_argument(
+        "--enable-thinking",
+        action="store_true",
+        default=False,
+        help="Enable reasoning/thinking mode for models that support it (e.g., Qwen3.5). Default: disabled.",
     )
 
 
@@ -344,17 +372,110 @@ def emit_deprecation_warning(old_command: str, new_command: str) -> None:
 def get_provider_config(args: argparse.Namespace) -> Dict[str, Any]:
     """
     Build provider config dictionary from parsed arguments.
-    
-    Expects args to have: base_url, timeout (optional), log_llm
-    
+
+    Expects args to have: base_url, timeout (optional), log_llm/verbose
+
     Returns:
         Dictionary suitable for passing to detector/extractor classes
     """
+    log_llm = resolve_verbose_flag(args)
     config = {
         "base_url": args.base_url,
-        "log_prompts": args.log_llm,
-        "log_responses": args.log_llm,
+        "log_prompts": log_llm,
+        "log_responses": log_llm,
     }
     if hasattr(args, "timeout"):
         config["timeout"] = args.timeout
     return config
+
+
+def resolve_verbose_flag(args: argparse.Namespace) -> bool:
+    """
+    Resolve the verbose/log-llm flag from parsed arguments.
+
+    Supports both --verbose/-v and the deprecated --log-llm flag.
+
+    Returns:
+        True if LLM logging is enabled.
+    """
+    return getattr(args, "verbose", False) or getattr(args, "log_llm", False)
+
+
+def create_llm_provider(args: argparse.Namespace):
+    """
+    Create an LLM provider instance from parsed CLI arguments.
+
+    Expects args to have: provider, model, base_url, timeout, verbose/log_llm,
+    enable_thinking (optional).
+
+    Returns:
+        A BaseLLMProvider instance (OllamaProvider or MLXProvider).
+
+    Raises:
+        SystemExit: If the provider is not supported.
+    """
+    from qualitative_analysis.core.providers import OllamaProvider
+
+    log_llm = resolve_verbose_flag(args)
+    provider = getattr(args, "provider", "ollama")
+
+    if provider == "ollama":
+        return OllamaProvider(
+            model_name=args.model,
+            base_url=args.base_url,
+            timeout=getattr(args, "timeout", 60.0),
+            temperature=getattr(args, "temperature", 0.3),
+            enable_thinking=getattr(args, "enable_thinking", False),
+            log_prompts=log_llm,
+            log_responses=log_llm,
+        )
+    elif provider == "mlx":
+        from qualitative_analysis.core.providers import MLXProvider
+        return MLXProvider(
+            model_name=args.model,
+            enable_thinking=getattr(args, "enable_thinking", False),
+            log_prompts=log_llm,
+            log_responses=log_llm,
+        )
+    else:
+        raise SystemExit(f"Provider '{provider}' not yet supported. Use 'ollama' or 'mlx'.")
+
+
+def auto_detect_csv_columns(
+    fieldnames: list,
+    text_col: str = "text",
+    id_col: Optional[str] = None,
+) -> tuple:
+    """
+    Auto-detect CSV column names with fallback alternatives.
+
+    Args:
+        fieldnames: Column names from CSV header.
+        text_col: Requested text column name.
+        id_col: Requested ID column name (or None).
+
+    Returns:
+        Tuple of (resolved_text_col, resolved_id_col).
+    """
+    resolved_text = text_col
+    resolved_id = id_col
+
+    # Text column auto-detection
+    if text_col not in fieldnames:
+        alternatives = ["instance_text", "content", "document", "body"]
+        for alt in alternatives:
+            if alt in fieldnames:
+                resolved_text = alt
+                print(f"Auto-detected text column: '{alt}'")
+                break
+
+    # ID column auto-detection (only when not explicitly set)
+    if id_col is None:
+        id_candidates = ["text_id", "id", "doc_id", "document_id"]
+        for candidate in id_candidates:
+            if candidate in fieldnames:
+                resolved_id = candidate
+                print(f"Auto-detected ID column: '{candidate}'")
+                break
+
+    return resolved_text, resolved_id

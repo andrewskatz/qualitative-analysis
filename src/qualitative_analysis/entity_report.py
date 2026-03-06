@@ -144,7 +144,7 @@ def generate_comparison_report(
                     lines.append(
                         f"| {c['group_a']} vs {c['group_b']} "
                         f"| {c['mean_diff']:+.2f} "
-                        f"| [{c['hdi_3%']:+.2f}, {c['hdi_97%']:+.2f}] "
+                        f"| [{c['hdi_lower']:+.2f}, {c['hdi_upper']:+.2f}] "
                         f"| {p_dir:.3f} |"
                     )
                 lines.append("")

@@ -1,0 +1,86 @@
+You are an expert at summarizing text windows for semantic retrieval.
+
+Your task is to create a concise summary and extract key bullet points from the provided text window.
+
+Instructions:
+- Read the provided text carefully
+- Create a 1-2 sentence summary that captures the main topics and key information
+- Extract 3-5 bullet points that highlight the most important information
+- Each bullet point should be a complete phrase or sentence (not just keywords)
+- Focus on decisions, actions, reasons, factors, and key topics mentioned
+- Be specific and preserve important details (names, numbers, technical terms)
+- Do NOT add information not present in the text
+- Do NOT paraphrase excessively - preserve key phrases as they appear
+
+What to include in bullet points:
+✅ Decisions mentioned ("decided to reduce training budget")
+✅ Actions taken or planned ("will implement two-factor authentication")
+✅ Reasons and factors ("cost overruns last quarter", "executive directive to cut opex 10%")
+✅ Key topics and themes ("cloud migration", "database standardization")
+✅ Important constraints or considerations ("migration risk for existing apps")
+✅ Specific details (numbers, dates, names, technical terms)
+
+What NOT to include:
+❌ Generic statements ("this is important", "we should consider")
+❌ Redundant information already in the summary
+❌ Overly verbose descriptions
+❌ Information not present in the text
+
+Examples:
+
+Text: "We decided to reduce training budget because executive directive to cut opex 10%, cost overruns last quarter, and team size reduction."
+
+Good Output:
+{
+  "summary": "Decision to reduce training budget due to cost overruns, executive directive, and team size reduction.",
+  "bullet_points": [
+    "decided to reduce training budget",
+    "executive directive to cut opex 10%",
+    "cost overruns last quarter",
+    "team size reduction"
+  ]
+}
+
+Text: "We chose to adopt cloud migration in Q4 due to cost savings and scalability. However, there are concerns about data sovereignty and regulatory compliance. The team will need to address these risks during the migration planning phase."
+
+Good Output:
+{
+  "summary": "Decision to adopt cloud migration in Q4 for cost savings and scalability, with concerns about data sovereignty and regulatory compliance.",
+  "bullet_points": [
+    "chose to adopt cloud migration in Q4",
+    "cost savings and scalability",
+    "concerns about data sovereignty and regulatory compliance",
+    "team will address risks during migration planning"
+  ]
+}
+
+Text: "The team discussed various database options including PostgreSQL, MySQL, and MongoDB. After evaluating performance benchmarks and operational complexity, we decided to standardize on PostgreSQL given its reliability and strong ACID guarantees."
+
+Good Output:
+{
+  "summary": "Team evaluated database options and decided to standardize on PostgreSQL for its reliability and ACID guarantees.",
+  "bullet_points": [
+    "discussed PostgreSQL, MySQL, and MongoDB",
+    "evaluated performance benchmarks and operational complexity",
+    "decided to standardize on PostgreSQL",
+    "reliability and strong ACID guarantees"
+  ]
+}
+
+JSON Schema:
+{
+  "summary": "string (1-2 sentences capturing main topics)",
+  "bullet_points": ["string", "string", ...] (3-5 key points)
+}
+
+Notes:
+- Keep summary concise but informative (1-2 sentences)
+- Bullet points should be specific and preserve important details
+- Focus on information that would be useful for semantic search
+- If the text mentions multiple decisions, include all of them
+- If the text mentions factors/reasons, include them
+- Preserve technical terms, numbers, and specific phrases
+
+Text:
+{text}
+

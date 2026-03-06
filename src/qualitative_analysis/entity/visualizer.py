@@ -84,6 +84,8 @@ class EntityVisualizer:
         use_numbered_labels: bool = True,
         max_labels: int = 200,
         uncertainty_style: str = "opacity",
+        scale_min: int = 0,
+        scale_max: int = 100,
     ) -> Optional[plt.Figure]:
         """
         Generate a ternary plot for entity scores.
@@ -187,10 +189,11 @@ class EntityVisualizer:
                 alpha = max(0.3, 0.95 - 0.65 * min(cv, 1.0))
 
             # Calculate marker size based on mean score (magnitude encoding)
-            # Use absolute 0-100 scale so size is meaningful across plots
-            # Scale from marker_size * 0.15 (score=0) to marker_size * 2.5 (score=100)
+            # Use absolute scale so size is meaningful across plots
+            # Scale from marker_size * 0.15 (score=min) to marker_size * 2.5 (score=max)
             mean_score = entity_data['mean_score']
-            abs_fraction = max(0, min(mean_score / 100.0, 1.0))
+            scale_range = scale_max - scale_min
+            abs_fraction = max(0, min((mean_score - scale_min) / scale_range, 1.0))
             point_size = marker_size * (0.15 + 2.35 * abs_fraction)
 
             # Plot the point
@@ -230,7 +233,7 @@ class EntityVisualizer:
         self._add_dimension_legend(ax, dimension_names)
 
         # Add size legend showing magnitude encoding
-        self._add_size_legend(ax, marker_size)
+        self._add_size_legend(ax, marker_size, scale_min=scale_min, scale_max=scale_max)
 
         # Configure plot
         ax.set_aspect('equal')
@@ -275,6 +278,8 @@ class EntityVisualizer:
         figsize: Tuple[int, int] = (10, 10),
         max_entities: int = 10,
         show_legend: bool = True,
+        scale_min: int = 0,
+        scale_max: int = 100,
     ) -> Optional[plt.Figure]:
         """
         Generate a radar chart for entity scores.
@@ -348,9 +353,11 @@ class EntityVisualizer:
         ax.set_theta_offset(np.pi / 2)  # Start from top
         ax.set_theta_direction(-1)  # Clockwise
         ax.set_thetagrids(np.degrees(angles[:-1]), dimension_names)
-        ax.set_ylim(0, 100)
-        ax.set_yticks([20, 40, 60, 80, 100])
-        ax.set_yticklabels(['20', '40', '60', '80', '100'])
+        ax.set_ylim(scale_min, scale_max)
+        r = scale_max - scale_min
+        ticks = [scale_min + i * r / 5 for i in range(1, 6)]
+        ax.set_yticks(ticks)
+        ax.set_yticklabels([f'{t:.0f}' for t in ticks])
         ax.grid(True)
 
         # Title and legend
@@ -730,19 +737,22 @@ class EntityVisualizer:
     def _add_size_legend(
         self,
         ax: plt.Axes,
-        base_marker_size: int
+        base_marker_size: int,
+        scale_min: int = 0,
+        scale_max: int = 100,
     ) -> None:
         """Add a legend showing point size to mean score mapping."""
-        # Show 3 reference sizes on the absolute 0-100 scale
+        # Show 3 reference sizes at 25%, 50%, 75% of scale range
+        r = scale_max - scale_min
         levels = [
-            (25, "25"),
-            (50, "50"),
-            (75, "75"),
+            (scale_min + 0.25 * r, f"{scale_min + 0.25 * r:.0f}"),
+            (scale_min + 0.50 * r, f"{scale_min + 0.50 * r:.0f}"),
+            (scale_min + 0.75 * r, f"{scale_min + 0.75 * r:.0f}"),
         ]
 
         legend_elements = []
         for score_val, label in levels:
-            abs_fraction = score_val / 100.0
+            abs_fraction = (score_val - scale_min) / r
             size = base_marker_size * (0.15 + 2.35 * abs_fraction)
             legend_elements.append(
                 plt.scatter(

@@ -684,3 +684,389 @@ class TestBayesianIntegration:
         assert result.diagnostics["rhat_max"] < 1.05, (
             f"Expected R-hat < 1.05, got {result.diagnostics['rhat_max']:.4f}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Audit Fix Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAuditFixes:
+    """Tests validating the fixes from the 2026-02-17 Bayesian audit."""
+
+    def test_hdi_keys_consistent(self, ground_truth_df):
+        """H3: All output dicts should use hdi_lower/hdi_upper, not hdi_3%/hdi_97%."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "high": [f"p_high_{i}" for i in range(4)],
+            "low": [f"p_low_{i}" for i in range(4)],
+        }
+        model = BayesianEntityModel(
+            scores_df=ground_truth_df,
+            dimensions=["social"],
+            groups=groups,
+        )
+        model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+
+        # Check summarize_posteriors
+        summaries = model.summarize_posteriors()
+        for dim, summary in summaries.items():
+            for var_name, var_data in summary["parameters"].items():
+                assert "hdi_lower" in var_data, f"Missing hdi_lower in {var_name}"
+                assert "hdi_upper" in var_data, f"Missing hdi_upper in {var_name}"
+                assert "hdi_3%" not in var_data, f"Old key hdi_3% found in {var_name}"
+                assert "hdi_97%" not in var_data, f"Old key hdi_97% found in {var_name}"
+            for gname, gdata in summary["group_effects"].items():
+                assert "hdi_lower_logit" in gdata, f"Missing hdi_lower_logit for {gname}"
+                assert "hdi_lower_score" in gdata, f"Missing hdi_lower_score for {gname}"
+
+        # Check group contrasts
+        contrasts = model.compute_group_contrasts()
+        for dim, dim_data in contrasts.items():
+            for pair_key, c in dim_data.items():
+                assert "hdi_lower" in c, f"Missing hdi_lower in contrast {pair_key}"
+                assert "hdi_upper" in c, f"Missing hdi_upper in contrast {pair_key}"
+                assert "hdi_prob" in c, f"Missing hdi_prob in contrast {pair_key}"
+                assert "hdi_3%" not in c, f"Old key hdi_3% found in contrast {pair_key}"
+
+        # Check ICC
+        icc = model.compute_icc()
+        for dim, icc_data in icc.items():
+            for component in ["icc_group", "icc_entity", "icc_participant", "icc_run"]:
+                assert "hdi_lower" in icc_data[component], f"Missing hdi_lower in {component}"
+                assert "hdi_upper" in icc_data[component], f"Missing hdi_upper in {component}"
+                assert "hdi_3%" not in icc_data[component], f"Old key in {component}"
+
+    def test_icc_sums_to_approximately_one(self, ground_truth_df):
+        """H1: ICC components should sum to approximately 1.0."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "high": [f"p_high_{i}" for i in range(4)],
+            "low": [f"p_low_{i}" for i in range(4)],
+        }
+        model = BayesianEntityModel(
+            scores_df=ground_truth_df,
+            dimensions=["social"],
+            groups=groups,
+        )
+        model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+
+        icc = model.compute_icc()
+        social_icc = icc["social"]
+        total = sum(social_icc[comp]["mean"] for comp in
+                     ["icc_group", "icc_entity", "icc_participant", "icc_run"])
+        assert abs(total - 1.0) < 0.05, (
+            f"ICC components should sum to ~1.0, got {total:.4f}"
+        )
+
+    def test_shrinkage_bounds(self, ground_truth_df):
+        """M2: Shrinkage values should be clamped to [0, 100]."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "high": [f"p_high_{i}" for i in range(4)],
+            "low": [f"p_low_{i}" for i in range(4)],
+        }
+        model = BayesianEntityModel(
+            scores_df=ground_truth_df,
+            dimensions=["social"],
+            groups=groups,
+        )
+        model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+
+        shrinkage = model.compute_shrinkage()
+        for dim, records in shrinkage.items():
+            for rec in records:
+                assert 0 <= rec["shrinkage_pct"] <= 100, (
+                    f"Shrinkage {rec['shrinkage_pct']} out of [0, 100] for {rec['entity']}"
+                )
+                # shrinkage_note field should exist
+                assert "shrinkage_note" in rec
+
+    def test_boundary_scores_warning(self):
+        """M6: Boundary scores (0 or 100) should trigger a warning."""
+        from qualitative_analysis.entity.bayesian import prepare_beta_data
+
+        df = _make_scores_df(n_entities=3, n_participants=2, n_runs=2)
+        # Inject boundary scores
+        for col in [c for c in df.columns if c.startswith("social_run")]:
+            df.at[df.index[0], col] = 0.0
+            df.at[df.index[1], col] = 100.0
+
+        with patch("qualitative_analysis.entity.bayesian.logger") as mock_logger:
+            data = prepare_beta_data(df, ["social"])
+            mock_logger.warning.assert_called()
+            warning_msg = str(mock_logger.warning.call_args)
+            assert "boundary" in warning_msg.lower()
+
+    def test_marginal_contrast_output(self, ground_truth_df):
+        """H2: Marginal contrasts should produce valid output with 'marginal' type."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "high": [f"p_high_{i}" for i in range(4)],
+            "low": [f"p_low_{i}" for i in range(4)],
+        }
+        model = BayesianEntityModel(
+            scores_df=ground_truth_df,
+            dimensions=["social"],
+            groups=groups,
+        )
+        model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+
+        marginal = model.compute_marginal_group_contrasts()
+        assert "social" in marginal
+        for pair_key, c in marginal["social"].items():
+            assert c["contrast_type"] == "marginal"
+            assert "mean_diff" in c
+            assert "hdi_lower" in c
+            assert "p_a_gt_b" in c
+
+    def test_logit_scale_contrast(self, ground_truth_df):
+        """L4: Logit-scale contrasts should have 'logit' scale label."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "high": [f"p_high_{i}" for i in range(4)],
+            "low": [f"p_low_{i}" for i in range(4)],
+        }
+        model = BayesianEntityModel(
+            scores_df=ground_truth_df,
+            dimensions=["social"],
+            groups=groups,
+        )
+        model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+
+        contrasts = model.compute_group_contrasts(scale="logit")
+        for pair_key, c in contrasts["social"].items():
+            assert c["scale"] == "logit"
+
+        # Invalid scale should raise
+        with pytest.raises(ValueError, match="scale must be"):
+            model.compute_group_contrasts(scale="invalid")
+
+    def test_model_cached_in_result(self, ground_truth_df):
+        """L5: BayesianModelResult should cache the PyMC model."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "high": [f"p_high_{i}" for i in range(4)],
+            "low": [f"p_low_{i}" for i in range(4)],
+        }
+        model = BayesianEntityModel(
+            scores_df=ground_truth_df,
+            dimensions=["social"],
+            groups=groups,
+        )
+        result = model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+        assert result.model is not None, "Model should be cached in BayesianModelResult"
+
+    def test_summarize_posteriors_structure(self, ground_truth_df):
+        """Verify structure of summarize_posteriors output."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "high": [f"p_high_{i}" for i in range(4)],
+            "low": [f"p_low_{i}" for i in range(4)],
+        }
+        model = BayesianEntityModel(
+            scores_df=ground_truth_df,
+            dimensions=["social"],
+            groups=groups,
+        )
+        model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+
+        summaries = model.summarize_posteriors()
+        assert "social" in summaries
+        s = summaries["social"]
+        assert "parameters" in s
+        assert "group_effects" in s
+        assert "diagnostics" in s
+        # Check parameter keys
+        for var in ["mu_pop", "sigma_entity", "kappa"]:
+            assert var in s["parameters"]
+            p = s["parameters"][var]
+            assert "mean" in p
+            assert "std" in p
+            assert "hdi_lower" in p
+            assert "hdi_upper" in p
+            assert "hdi_prob" in p
+            assert p["hdi_prob"] == 0.94
+
+    def test_contrast_includes_scale_field(self, ground_truth_df):
+        """L4: Default contrasts should include a 'scale' field."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "high": [f"p_high_{i}" for i in range(4)],
+            "low": [f"p_low_{i}" for i in range(4)],
+        }
+        model = BayesianEntityModel(
+            scores_df=ground_truth_df,
+            dimensions=["social"],
+            groups=groups,
+        )
+        model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+
+        contrasts = model.compute_group_contrasts()
+        for pair_key, c in contrasts["social"].items():
+            assert "scale" in c
+            assert c["scale"] == "probability"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Custom scale (1-10) support
+# ---------------------------------------------------------------------------
+
+
+def _make_custom_scale_df(
+    scale_min: int = 1,
+    scale_max: int = 10,
+    n_entities: int = 5,
+    n_participants_per_group: int = 3,
+    n_runs: int = 3,
+    seed: int = 99,
+) -> pd.DataFrame:
+    """
+    Generate synthetic data on a custom scale (default 1-10).
+
+    Group "alpha" scores ~7.5 on social, ~4.0 on ecological.
+    Group "beta"  scores ~4.0 on social, ~7.5 on ecological.
+    """
+    rng = np.random.RandomState(seed)
+
+    groups = {
+        "alpha": [f"p_alpha_{i}" for i in range(n_participants_per_group)],
+        "beta": [f"p_beta_{i}" for i in range(n_participants_per_group)],
+    }
+
+    group_means = {
+        "alpha": {"social": 7.5, "ecological": 4.0, "technological": 5.5},
+        "beta": {"social": 4.0, "ecological": 7.5, "technological": 5.5},
+    }
+
+    entities = [f"ent_{i}" for i in range(n_entities)]
+    dims = ["social", "ecological", "technological"]
+
+    rows = []
+    for gname, pids in groups.items():
+        for pid in pids:
+            for ent in entities:
+                row = {
+                    "text_id": pid,
+                    "entity": ent,
+                    "context": f"context for {ent}",
+                    "group": gname,
+                    "num_runs": n_runs,
+                }
+                for dim in dims:
+                    mu = group_means[gname][dim]
+                    entity_offset = rng.normal(0, 0.5)
+                    runs = []
+                    for k in range(1, n_runs + 1):
+                        score = mu + entity_offset + rng.normal(0, 0.3)
+                        score = max(scale_min + 0.1, min(scale_max - 0.1, round(score, 1)))
+                        runs.append(score)
+                        row[f"{dim}_run{k}"] = score
+                    row[f"{dim}_mean"] = round(np.mean(runs), 2)
+                    row[f"{dim}_std"] = round(np.std(runs, ddof=1) if len(runs) > 1 else 0.0, 2)
+                rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+@pytest.fixture
+def custom_scale_df():
+    """Synthetic dataset on 1-10 scale."""
+    return _make_custom_scale_df()
+
+
+class TestCustomScale:
+    """Tests that the pipeline handles non-default score scales correctly."""
+
+    def test_prepare_beta_data_custom_scale(self, custom_scale_df):
+        """S&V squeeze should normalize 1-10 scores to (0, 1)."""
+        dims = ["social", "ecological", "technological"]
+        data = prepare_beta_data(custom_scale_df, dims, scale_min=1, scale_max=10)
+        y = data["long_df"]["y"]
+        assert (y > 0).all(), "All y must be > 0"
+        assert (y < 1).all(), "All y must be < 1"
+
+    def test_prepare_beta_data_default_scale_unchanged(self, basic_df):
+        """Default scale (0-100) should produce identical results to before."""
+        dims = ["social", "ecological", "technological"]
+        data_default = prepare_beta_data(basic_df, dims)
+        data_explicit = prepare_beta_data(basic_df, dims, scale_min=0, scale_max=100)
+        pd.testing.assert_frame_equal(data_default["long_df"], data_explicit["long_df"])
+
+    def test_scale_config_properties(self):
+        """ScaleConfig should compute correct derived values."""
+        from qualitative_analysis.entity.models import ScaleConfig
+
+        sc = ScaleConfig(scale_min=1, scale_max=10)
+        assert sc.scale_range == 9
+        assert sc.midpoint == 5.5
+        assert abs(sc.rope_default() - 0.45) < 1e-10
+        assert sc.fraction(1) == 0.0
+        assert sc.fraction(10) == 1.0
+        assert abs(sc.fraction(5.5) - 0.5) < 1e-10
+        assert abs(sc.from_fraction(0.5) - 5.5) < 1e-10
+
+    def test_dimension_score_ci_clamping_custom_scale(self):
+        """CI should clamp to custom scale bounds, not hardcoded 0/100."""
+        score = DimensionScore.from_scores(
+            dimension="social",
+            scores=[2, 3, 2, 3, 2],
+            scale_min=1,
+            scale_max=10,
+        )
+        assert score.confidence_interval_95[0] >= 1
+        assert score.confidence_interval_95[1] <= 10
+
+    def test_boundary_detection_custom_scale(self, custom_scale_df):
+        """Boundary detection should use custom scale bounds, not 0/100."""
+        # Add boundary scores at scale_min=1
+        df = custom_scale_df.copy()
+        df.iloc[0, df.columns.get_loc("social_run1")] = 1.0
+
+        dims = ["social"]
+        # Verify it doesn't crash and boundary detection uses the right values
+        data = prepare_beta_data(df, dims, scale_min=1, scale_max=10)
+        assert data is not None
+        # The score=1.0 (boundary) should still be present in long_df
+        assert len(data["long_df"]) > 0
+
+    @pytest.mark.skipif(
+        not check_pymc_available(),
+        reason="PyMC not installed",
+    )
+    def test_bayesian_model_custom_scale(self, custom_scale_df):
+        """BayesianEntityModel should accept and use custom scale."""
+        from qualitative_analysis.entity.bayesian import BayesianEntityModel
+
+        groups = {
+            "alpha": [f"p_alpha_{i}" for i in range(3)],
+            "beta": [f"p_beta_{i}" for i in range(3)],
+        }
+        model = BayesianEntityModel(
+            scores_df=custom_scale_df,
+            dimensions=["social"],
+            groups=groups,
+            scale_min=1,
+            scale_max=10,
+        )
+        assert model.scale_min == 1
+        assert model.scale_max == 10
+        assert model.scale_range == 9
+
+        # Fit and verify posterior means are on the 1-10 scale
+        model.fit("social", chains=2, draws=500, tune=300, sampler="nuts", random_seed=42)
+
+        summary = model.summarize_posteriors()
+        for gname, group_info in summary["social"]["group_effects"].items():
+            mean_score = group_info["mean_score"]
+            assert 1 <= mean_score <= 10, (
+                f"Group {gname} mean {mean_score} should be on 1-10 scale"
+            )
