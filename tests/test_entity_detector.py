@@ -208,6 +208,26 @@ class TestEntityDetector:
         assert result.entities.count("renewable energy") == 1
         assert "renewable energy" in result.entities
 
+    def test_extract_entities_accepts_markdown_fenced_json(self):
+        mock_llm = MockLLMProvider([
+            '```json\n{"entities_and_concepts": ["renewable energy", "heating costs"]}\n```'
+        ])
+        detector = EntityDetector(mock_llm, window_size=3, stride=2)
+
+        entities = run_async(detector._extract_entities("Some text here."))
+
+        assert entities == ["renewable energy", "heating costs"]
+
+    def test_extract_entities_accepts_embedded_json(self):
+        mock_llm = MockLLMProvider([
+            'Here are the entities: {"entities_and_concepts": ["community support", "solar panels"]} Thanks.'
+        ])
+        detector = EntityDetector(mock_llm, window_size=3, stride=2)
+
+        entities = run_async(detector._extract_entities("Some text here."))
+
+        assert entities == ["community support", "solar panels"]
+
     def test_entity_contexts_include_window_info(self, detector):
         """Entity contexts should include window index."""
         result = run_async(detector.detect(

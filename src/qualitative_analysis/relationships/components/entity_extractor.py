@@ -2,22 +2,14 @@
 Entity extraction component for relationship pipeline.
 """
 
-import json
 import logging
 from typing import List
 
-from pydantic import BaseModel, Field, ConfigDict
-
+from ...core.entity_extraction import EntityResponse, extract_json_object_payload
 from ...core.llm import BaseLLMProvider
 from ..prompts.loader import load_prompt
 
 logger = logging.getLogger(__name__)
-
-
-class EntityResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    entities_and_concepts: List[str] = Field(default_factory=list)
 
 
 class EntityExtractor:
@@ -50,23 +42,4 @@ class EntityExtractor:
         return prompt
 
     def _extract_json_payload(self, response: str) -> dict:
-        content = response.strip()
-        if content.startswith("```"):
-            lines = content.splitlines()
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            content = "\n".join(lines).strip()
-
-        start = content.find("{")
-        end = content.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            content = content[start:end + 1]
-
-        data = json.loads(content)
-        if isinstance(data, str):
-            data = json.loads(data)
-        if not isinstance(data, dict):
-            raise ValueError("Expected JSON object for entity extraction.")
-        return data
+        return extract_json_object_payload(response, error_context="entity extraction")

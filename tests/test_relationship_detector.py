@@ -126,6 +126,22 @@ class TestRelationshipDetector:
         for rel in result.relationships:
             assert rel.text_id == "participant_42"
 
+    def test_detect_accepts_markdown_fenced_entity_response(self):
+        mock_llm = MockLLMProvider(
+            entity_responses=['```json\n{"entities_and_concepts": ["A", "B"]}\n```'],
+            relationship_responses=[json.dumps({"relationships": []})],
+        )
+        detector = RelationshipDetector(
+            llm_provider=mock_llm,
+            strategy="two_pass", window_size=1000000, stride=1000000,
+            enable_summaries=False,
+        )
+
+        result = run_async(detector.detect("A and B appear in this passage."))
+
+        assert "A" in result.entities
+        assert "B" in result.entities
+
     def test_detect_resets_context_buffer(self):
         """Context buffer should not bleed between detect() calls."""
         mock_llm = MockLLMProvider(

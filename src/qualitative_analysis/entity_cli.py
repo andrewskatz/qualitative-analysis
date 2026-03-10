@@ -24,12 +24,19 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# SCALE AUTO-DETECTION HELPER
+# DOWNSTREAM SCALE RESOLUTION HELPERS
 # =============================================================================
 
 def _resolve_scale(args: argparse.Namespace, input_csv_dir: Path) -> "ScaleConfig":
     """
-    Resolve scale configuration with priority:
+    Resolve a score scale for commands that read previously scored outputs.
+
+    This helper is intentionally metadata-aware for downstream consumers like
+    visualization and comparison commands. The scoring command derives scale
+    from the chosen dimensions and only applies explicit CLI overrides before
+    writing fresh score_metadata.json for later consumers.
+
+    Resolution priority:
     1. Explicit CLI args (--scale-min, --scale-max)
     2. score_metadata.json in same directory as input
     3. Defaults (0, 100)
@@ -54,6 +61,29 @@ def _resolve_scale(args: argparse.Namespace, input_csv_dir: Path) -> "ScaleConfi
         scale_max = args.scale_max
 
     return ScaleConfig(scale_min=scale_min, scale_max=scale_max)
+
+
+def _apply_scoring_scale_overrides(
+    dimensions: List["DimensionDefinition"],
+    args: argparse.Namespace,
+) -> List["DimensionDefinition"]:
+    """
+    Apply explicit scoring CLI scale overrides to the loaded dimensions.
+
+    Scoring intentionally does not auto-detect scale from score_metadata.json;
+    it uses the scale defined on the selected dimensions unless the caller
+    passes --scale-min/--scale-max.
+    """
+    if getattr(args, "scale_min", None) is None and getattr(args, "scale_max", None) is None:
+        return dimensions
+
+    for dim in dimensions:
+        if args.scale_min is not None:
+            dim.scale_min = args.scale_min
+        if args.scale_max is not None:
+            dim.scale_max = args.scale_max
+
+    return dimensions
 
 
 # =============================================================================
@@ -233,13 +263,9 @@ async def run_entity_score(args: argparse.Namespace) -> int:
 
         print(f"Loaded {len(dimensions)} custom dimensions from {dim_path}")
 
-    # Apply scale overrides if provided
+    # Scoring uses the dimension source plus explicit CLI overrides only.
+    dimensions = _apply_scoring_scale_overrides(dimensions, args)
     if getattr(args, 'scale_min', None) is not None or getattr(args, 'scale_max', None) is not None:
-        for dim in dimensions:
-            if args.scale_min is not None:
-                dim.scale_min = args.scale_min
-            if args.scale_max is not None:
-                dim.scale_max = args.scale_max
         print(f"Scale override: {dimensions[0].scale_min}-{dimensions[0].scale_max}")
 
     # Load research context if provided

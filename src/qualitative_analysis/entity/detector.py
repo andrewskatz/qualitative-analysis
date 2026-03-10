@@ -19,12 +19,14 @@ Example usage::
     print(result.entities)  # ["heating crisis", "renewable energy", ...]
 """
 
-import json
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 import logging
 
-from qualitative_analysis.relationships.components.entity_extractor import EntityResponse
+from qualitative_analysis.core.entity_extraction import (
+    EntityResponse,
+    extract_json_object_payload,
+)
 from qualitative_analysis.entity.prompts.loader import load_entity_prompt
 from qualitative_analysis.core.text import SlidingWindowProcessor
 from qualitative_analysis.core.llm import BaseLLMProvider
@@ -131,27 +133,8 @@ class EntityDetector:
 
     @staticmethod
     def _extract_json_payload(response: str) -> dict:
-        """Extract JSON object from an LLM response, handling markdown fences."""
-        content = response.strip()
-        if content.startswith("```"):
-            lines = content.splitlines()
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            content = "\n".join(lines).strip()
-
-        start = content.find("{")
-        end = content.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            content = content[start:end + 1]
-
-        data = json.loads(content)
-        if isinstance(data, str):
-            data = json.loads(data)
-        if not isinstance(data, dict):
-            raise ValueError("Expected JSON object for entity extraction.")
-        return data
+        """Extract JSON object from an LLM response for entity extraction."""
+        return extract_json_object_payload(response, error_context="entity extraction")
 
     async def detect(
         self,

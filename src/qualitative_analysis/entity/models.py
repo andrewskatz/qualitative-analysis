@@ -137,8 +137,13 @@ class ScaleConfig:
     """
     Score scale configuration for the entity scoring pipeline.
 
-    Propagated from CLI args or auto-detected from score_metadata.json.
-    Used by scoring, Bayesian modeling, and visualization components.
+    Used for downstream consumers that need an explicit score range, such as
+    visualization and Bayesian/comparison commands that can auto-detect scale
+    from score_metadata.json.
+
+    The scoring command itself derives scale from the selected dimension
+    definitions and then applies any explicit CLI overrides before persisting
+    score_metadata.json for those downstream consumers.
     """
     scale_min: int = 0
     scale_max: int = 100
@@ -362,6 +367,7 @@ class EntityScore:
                 result[f"{dim_name}_run{k}"] = run_score
             result[f"{dim_name}_mean"] = score.mean
             result[f"{dim_name}_median"] = score.median
+            result[f"{dim_name}_mode"] = score.mode
             result[f"{dim_name}_std"] = score.std_dev
             result[f"{dim_name}_ci_low"] = score.confidence_interval_95[0]
             result[f"{dim_name}_ci_high"] = score.confidence_interval_95[1]
@@ -440,9 +446,9 @@ class EntityScoreResult:
         self.statistics = stats
         return stats
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, include_runs: bool = False) -> Dict[str, Any]:
         return {
-            "scores": [s.to_dict() for s in self.scores],
+            "scores": [s.to_dict(include_runs=include_runs) for s in self.scores],
             "dimensions": [d.to_dict() for d in self.dimensions],
             "config": self.config,
             "statistics": self.statistics or self.compute_statistics(),

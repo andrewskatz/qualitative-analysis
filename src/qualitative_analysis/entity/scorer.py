@@ -28,7 +28,11 @@ logger = logging.getLogger(__name__)
 PROMPT_DIR = Path(__file__).parent / "prompts"
 DEFAULT_PROMPT_FILE = PROMPT_DIR / "entity_scoring_v2.txt"
 
-# Available prompt versions
+# Available prompt versions.
+# These are intentional output contracts used by downstream workflows/tests:
+# - v2: includes initial_observations and per-dimension score + justification
+# - v3: includes initial_observations and per-dimension justification-first ordering
+# - v4: score-only JSON (no initial_observations or justifications expected)
 PROMPT_VERSIONS = {
     "v2": PROMPT_DIR / "entity_scoring_v2.txt",
     "v3": PROMPT_DIR / "entity_scoring_v3.txt",
@@ -75,7 +79,9 @@ class EntityScorer:
         Args:
             prompt_template: Custom prompt template string. If None, uses default.
             prompt_version: Prompt version to use ("v2", "v3", "v4"). Overrides
-                prompt_template if set. If None, uses "v2" (default).
+                prompt_template if set. If None, uses "v2" (default). Versions
+                are intentional contracts: v2=score+justification, v3=justification
+                before score, v4=score-only.
             temperature: LLM temperature for generation (default 0.3 for stability).
             verbose: If True, print prompts and responses to stdout.
         """
@@ -525,8 +531,10 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
         if not isinstance(raw_scores, list):
             raise ValueError(f"'dimension_scores' must be a list, got {type(raw_scores).__name__}")
 
-        expected_dims = {d.name.lower() for d in dimensions}
+        expected_dims = {d.name.lower(): d for d in dimensions}
         dimension_scores = {}
+        parse_issues = []
+        unexpected_dims = []
 
         for score_data in raw_scores:
             if not isinstance(score_data, dict):
@@ -534,25 +542,53 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
 
             dim_name = score_data.get("dimension", "").lower()
             score = score_data.get("score")
-            justification = score_data.get("justification", "")
+            justification = score_data.get("justification", "") or ""
 
             if dim_name not in expected_dims:
+                unexpected_dims.append(dim_name or "<missing>")
                 logger.warning(f"Unexpected dimension: {dim_name}")
                 continue
 
-            if not isinstance(score, (int, float)):
+            if isinstance(score, bool) or not isinstance(score, (int, float)):
+                parse_issues.append(f"{dim_name}: non-numeric score {score!r}")
                 logger.warning(f"Invalid score for {dim_name}: {score}")
                 continue
 
+            if isinstance(score, float) and not score.is_integer():
+                parse_issues.append(f"{dim_name}: non-integer score {score!r}")
+                logger.warning(f"Non-integer score for {dim_name}: {score}")
+                continue
+
+            int_score = int(score)
+            dim_def = expected_dims[dim_name]
+            if int_score < dim_def.scale_min or int_score > dim_def.scale_max:
+                parse_issues.append(
+                    f"{dim_name}: out-of-range score {int_score} not in "
+                    f"[{dim_def.scale_min}, {dim_def.scale_max}]"
+                )
+                logger.warning(f"Out-of-range score for {dim_name}: {int_score}")
+                continue
+
             dimension_scores[dim_name] = {
-                "score": int(score),
+                "score": int_score,
                 "justification": justification,
             }
 
         # Check for missing dimensions
-        missing = expected_dims - set(dimension_scores.keys())
+        parsed_dims = set(dimension_scores.keys())
+        missing = set(expected_dims.keys()) - parsed_dims
         if missing:
-            raise ValueError(f"Missing dimensions: {missing}")
+            issues = []
+            if parse_issues:
+                issues.append(f"issues={parse_issues}")
+            if unexpected_dims:
+                issues.append(f"unexpected={unexpected_dims}")
+            issues_text = f"; {'; '.join(issues)}" if issues else ""
+            raise ValueError(
+                f"Missing dimensions: {sorted(missing)}; "
+                f"expected={sorted(expected_dims.keys())}; parsed={sorted(parsed_dims)}"
+                f"{issues_text}; response_excerpt={clean_response[:300]}"
+            )
 
         return {
             "dimension_scores": dimension_scores,
@@ -605,25 +641,52 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
         return aggregated
 
     def save(self, result: EntityScoreResult, path: Union[str, Path]) -> None:
-        """Save entity score result to JSON file."""
+        """Save entity score result to JSON with full raw-run fidelity."""
         path = Path(path)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(result.to_dict(), f, indent=2)
+            json.dump(result.to_dict(include_runs=True), f, indent=2)
         logger.info(f"Saved entity scores to {path}")
 
     def load(self, path: Union[str, Path]) -> EntityScoreResult:
-        """Load entity score result from JSON file."""
+        """Load entity score result from JSON file.
+
+        Loading is full-fidelity when nested raw `runs` are present in the JSON,
+        and aggregate-fidelity otherwise using the flattened score columns.
+        """
         path = Path(path)
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        raw_dimensions = data.get("dimensions", [])
+        dimensions = [
+            DimensionDefinition.from_dict(d)
+            if isinstance(d, dict)
+            else DimensionDefinition(name=str(d), description="")
+            for d in raw_dimensions
+        ]
+
         # Reconstruct the result
         scores = []
         for s_data in data.get("scores", []):
-            num_runs = s_data.get("num_runs", 1)
+            raw_runs = s_data.get("runs", [])
+            runs = []
+            for idx, run_data in enumerate(raw_runs, start=1):
+                if not isinstance(run_data, dict):
+                    continue
+                runs.append(
+                    SingleRunScore(
+                        run_number=run_data.get("run_number", idx),
+                        dimension_scores=run_data.get("dimension_scores", {}),
+                        initial_observations=run_data.get("initial_observations", ""),
+                        raw_response=run_data.get("raw_response", ""),
+                        processing_time_ms=run_data.get("processing_time_ms", 0.0),
+                    )
+                )
+
+            num_runs = s_data.get("num_runs", len(runs) or 1)
             dim_scores = {}
-            for dim_name in data.get("dimensions", []):
-                dim_key = dim_name.get("name", "").lower() if isinstance(dim_name, dict) else dim_name.lower()
+            for dim_def in dimensions:
+                dim_key = dim_def.name.lower()
                 if f"{dim_key}_mean" in s_data:
                     # Reconstruct individual run scores from {dim}_run{k} columns
                     run_scores = []
@@ -652,13 +715,12 @@ Score each dimension on {scale_range_description}. Return ONLY valid JSON."""
                 text_id=s_data.get("text_id", ""),
                 context=s_data.get("context", ""),
                 dimension_scores=dim_scores,
+                runs=runs,
                 num_runs=num_runs,
                 processing_time_ms=s_data.get("processing_time_ms", 0),
+                window_index=s_data.get("window_index"),
+                group=s_data.get("group"),
             ))
-
-        dimensions = [
-            DimensionDefinition.from_dict(d) for d in data.get("dimensions", [])
-        ]
 
         return EntityScoreResult(
             scores=scores,
