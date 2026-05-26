@@ -96,7 +96,15 @@ class SlidingWindowProcessor(TextProcessor):
                     "Token-based chunking requires tiktoken. "
                     "Install it with `pip install tiktoken`."
                 ) from exc
-            self._tokenizer = tiktoken.get_encoding(self.tokenizer_name)
+            try:
+                self._tokenizer = tiktoken.get_encoding(self.tokenizer_name)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Token-based chunking could not initialize the requested "
+                    f"tokenizer '{self.tokenizer_name}'. If you are running in an "
+                    "offline or restricted environment, pre-cache the tokenizer "
+                    "assets before using token-based chunking."
+                ) from exc
         return self._tokenizer
 
     def _encode_tokens(self, text: str) -> List[int]:

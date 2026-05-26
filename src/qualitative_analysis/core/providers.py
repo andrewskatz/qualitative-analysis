@@ -46,6 +46,12 @@ class OllamaProvider(BaseLLMProvider):
             await self._client.aclose()
             self._client = None
 
+    @staticmethod
+    def _strip_think_blocks(text: str) -> str:
+        """Remove <think>...</think> reasoning blocks from content."""
+        cleaned = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+        return cleaned.strip()
+
     async def generate(
         self, 
         prompt: str, 
@@ -94,9 +100,26 @@ class OllamaProvider(BaseLLMProvider):
 
         content = data["message"]["content"]
         thinking = data["message"].get("thinking", "")
+        clean_content = self._strip_think_blocks(content)
+        clean_thinking = self._strip_think_blocks(thinking)
+
+        if not self.enable_thinking:
+            if clean_content:
+                content = clean_content
+            elif clean_thinking:
+                logger.warning(
+                    "Ollama returned empty message content; using sanitized thinking "
+                    "field as fallback response content."
+                )
+                content = clean_thinking
+            else:
+                content = clean_content
+            thinking = ""
+        else:
+            content = clean_content
 
         if self.log_responses:
-            if thinking:
+            if self.enable_thinking and thinking:
                 print("\n[LLM THINKING]", flush=True)
                 print(thinking, flush=True)
             print("\n[LLM RESPONSE]", flush=True)
