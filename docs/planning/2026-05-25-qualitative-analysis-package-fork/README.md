@@ -1,7 +1,7 @@
 # Fork `qualitative-analysis` into a Standalone Repo
 
 **Date:** 2026-05-25
-**Status:** Phase 1 complete (inventory drafted); awaiting reviewer approval before Phase 2
+**Status:** Phase 4 complete (new repo live at `git@github.com:andrewskatz/qualitative-analysis.git`); awaiting Phase 5 go-ahead (parent cleanup)
 
 ## Overview
 
@@ -117,8 +117,9 @@ is never created — we just `rm -rf` the staging dir and retry.
 ### Phase 5 — Clean up the parent repo
 
 Only after Phase 4 succeeds:
-1. In parent: `git rm -r qualitative-analysis/` plus each moved docs path.
-2. Update parent `requirements.txt` to add: `qualitative-analysis @ git+https://github.com/andrewskatz/qualitative-analysis@main` (pin a tag/sha once tags exist).
+1. **Sync the planning dir's live state into the new repo.** The Phase 0/1 planning + 02-execution-log.md were committed in the parent and frozen into the new repo at extraction time (Phase 2). Phase 3/4 entries were edited in the parent's copy only, so the new repo's copy is stale. Before deleting from the parent, copy the parent's current `docs/planning/2026-05-25-qualitative-analysis-package-fork/` contents over the new repo's copy and commit there. This ensures the new repo retains the full audit trail.
+2. In parent: `git rm -r qualitative-analysis/` plus each moved docs path.
+3. Update parent `requirements.txt` to add: `qualitative-analysis @ git+https://github.com/andrewskatz/qualitative-analysis@main` (pin a tag/sha once tags exist).
 3. Verify the two parent scripts that import the package still work:
    - `publications-and-presentations/llm-qualitative-scoring-methodology/human-coding-study/analysis/select_sample.py`
    - `publications-and-presentations/llm-qualitative-scoring-methodology/scripts/generate_tables.py`
@@ -157,4 +158,4 @@ If anything goes wrong:
 
 ---
 
-**Next step:** review [`01-path-inventory.md`](01-path-inventory.md) and approve before Phase 2 (`git filter-repo`). See [`02-execution-log.md`](02-execution-log.md) for Phase 0 and Phase 1 details.
+**Next step:** approve Phase 5 (parent cleanup — `git rm` the moved paths, update requirements.txt, sync planning dir to new repo). See [`02-execution-log.md`](02-execution-log.md) for Phase 0–4 details. The new repo is live at `git@github.com:andrewskatz/qualitative-analysis.git`.
