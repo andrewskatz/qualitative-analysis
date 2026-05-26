@@ -156,6 +156,24 @@ See [`01-path-inventory.md`](01-path-inventory.md). Tally:
 
 The inventory file also pre-renders the exact `git filter-repo` command line.
 
+### 1.6 Plan revision: staging dir instead of `/tmp/qa-extract`
+
+After the inventory was complete, on review the original Phase 2/Phase 3 plan
+had filter-repo running in `/tmp/qa-extract` and then `mv`-ing the result to
+the final location. Two issues with that:
+
+- macOS `/tmp` is wiped on reboot — risk of losing in-progress work.
+- `/tmp` is on a different filesystem from the final location, so `mv` becomes
+  a copy-then-delete rather than an atomic rename.
+
+Plan was revised to use a sibling staging dir
+(`qualitative-analysis-staging/`, on the same filesystem as the final
+`qualitative-analysis/`). The final directory comes into existence in Phase 3
+via an atomic rename. Same overall safety properties (no half-baked repo
+at the final path if anything errors), but cleaner and faster.
+
+README updated; the inventory's filter-repo command is unchanged.
+
 
 ---
 

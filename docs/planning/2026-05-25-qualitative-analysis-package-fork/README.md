@@ -81,19 +81,27 @@ Plus individual progress notes mentioning the package (full list will be generat
 
 **Deliverable:** Tick-list of paths in this dir as `01-path-inventory.md`. Each entry annotated "primary about the package?" yes/no. User reviews + approves before any history rewrite.
 
-### Phase 2 — Run `filter-repo` on a working clone
+### Phase 2 — Run `filter-repo` in a sibling staging dir
 
-1. Fresh clone to scratch space: `git clone <parent> /tmp/qa-extract`
+The staging dir is on the same filesystem as the final dir, so the Phase 3
+rename is atomic. Same-filesystem also avoids cross-device copy-then-delete.
+If filter-repo errors out partway, the final dir name (`qualitative-analysis`)
+is never created — we just `rm -rf` the staging dir and retry.
+
+1. Clone parent into a sibling staging dir:
+   `git clone "/Users/akatz4/Documents/ak fac/research/projects/entity-id-app-v2" "/Users/akatz4/Documents/ak fac/research/projects/qualitative-analysis-staging"`
 2. Remove `origin` in the clone (filter-repo refuses by default to operate on a clone with remotes — this protects us from rewriting the parent's remote history).
 3. Run `git filter-repo` with two kinds of args:
-   - `--path qualitative-analysis/ --path docs/planning/<each-moved-dir>/ ...` (keep only these paths)
+   - `--path qualitative-analysis/ --path docs/planning/<each-moved-dir>/ ...` (keep only these paths — exact list in [`01-path-inventory.md`](01-path-inventory.md))
    - `--path-rename qualitative-analysis/:` (lift the package contents to the new repo root)
-4. **Result:** `/tmp/qa-extract` is a repo containing only filtered history, package at root, moved docs still under `docs/planning/...`.
+4. **Result:** `qualitative-analysis-staging/` is a repo containing only filtered history, package at root, moved docs still under `docs/planning/...`. Verify with `git log --stat`, `find . -maxdepth 2`, and a check that no STAY paths leaked in.
 
 ### Phase 3 — Polish the new repo locally
 
-In `/tmp/qa-extract`:
-1. Move to final location: `mv /tmp/qa-extract "/Users/akatz4/Documents/ak fac/research/projects/qualitative-analysis"` (sibling of `entity-id-app-v2`)
+1. Atomic rename to final location:
+   `mv "/Users/akatz4/Documents/ak fac/research/projects/qualitative-analysis-staging" "/Users/akatz4/Documents/ak fac/research/projects/qualitative-analysis"`
+
+   This is the moment the final project directory comes into existence. The rename is a no-op on disk (same parent dir), so it's safe and instant.
 2. Update `README.md` — drop "Run from repo root: `PYTHONPATH=qualitative-analysis/src ...`" (package is now the root). Add standalone install/usage section.
 3. Add `LICENSE` file (MIT, matching `pyproject.toml`).
 4. Bump version in `pyproject.toml` (e.g., `0.1.0` → `0.2.0`) and add a brief `CHANGELOG.md` noting the extraction.
@@ -136,9 +144,10 @@ Only after Phase 4 succeeds:
 ## Rollback
 
 If anything goes wrong:
-1. Before Phase 4: discard `/tmp/qa-extract`, no parent changes have happened.
-2. After Phase 4 but before Phase 5: delete the GitHub repo, `rm -rf` the local sibling dir, no parent changes have happened.
-3. After Phase 5: restore parent from `~/qa-extraction-safety.bundle` via `git clone ~/qa-extraction-safety.bundle entity-id-app-v2-restored`.
+1. Before Phase 3 rename: discard `qualitative-analysis-staging/`, no parent changes have happened.
+2. After Phase 3 rename but before Phase 4: `rm -rf` the local sibling dir at `~/.../qualitative-analysis`. Parent is still untouched.
+3. After Phase 4 but before Phase 5: delete the GitHub repo, `rm -rf` the local sibling dir. Parent is still untouched.
+4. After Phase 5: restore parent from `~/qa-extraction-safety.bundle` via `git clone ~/qa-extraction-safety.bundle entity-id-app-v2-restored`.
 
 ## Files in this planning dir
 
