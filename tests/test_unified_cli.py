@@ -47,9 +47,11 @@ class TestQAHelpOutput(unittest.TestCase):
 
     def test_qa_version(self):
         """Test that qa --version shows package version."""
+        from qualitative_analysis import __version__
+
         result = self._run_qa("--version")
         self.assertEqual(result.returncode, 0)
-        self.assertIn("0.1.0", result.stdout)
+        self.assertIn(__version__, result.stdout)
 
     def test_qa_figurative_help(self):
         """Test that qa figurative --help shows subcommands."""

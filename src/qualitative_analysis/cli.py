@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
-from qualitative_analysis.core.cli_utils import emit_deprecation_warning
+from qualitative_analysis.core.cli_utils import PACKAGE_VERSION, emit_deprecation_warning
 from qualitative_analysis.figurative.detector import FigurativeDetector
 from qualitative_analysis.figurative.models import DetectionCheckpoint
 
@@ -535,7 +535,7 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
             "instances": str(instances_path) if write_instances else None,
             "windows": str(windows_path) if write_windows else None,
         },
-        "package_version": "0.1.0",
+        "package_version": PACKAGE_VERSION,
     }
     
     metadata_path = run_dir / "run_metadata.json"

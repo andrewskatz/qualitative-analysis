@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from qualitative_analysis.core.cli_utils import (
+    PACKAGE_VERSION,
     emit_deprecation_warning,
     resolve_nested_output_dir,
 )
@@ -518,7 +519,7 @@ async def run_map(args) -> int:
         "outputs": {
             "domain_mappings_csv": str(output_path),
         },
-        "package_version": "0.1.0",
+        "package_version": PACKAGE_VERSION,
     }
     
     metadata_path = output_path.parent / f"mapping_metadata_{timestamp}.json"
@@ -656,7 +657,7 @@ def run_normalize(args) -> int:
             "normalized_csv": str(output_path),
             "normalization_config": str(config_path) if not args.load_config else None,
         },
-        "package_version": "0.1.0",
+        "package_version": PACKAGE_VERSION,
     }
     
     metadata_path = output_path.parent / f"normalize_metadata_{timestamp}.json"
@@ -762,7 +763,7 @@ def run_graph(args) -> int:
         "outputs": {
             "files": [str(p) for p in saved_paths],
         },
-        "package_version": "0.1.0",
+        "package_version": PACKAGE_VERSION,
     }
     
     metadata_path = output_dir / f"graph_metadata_{timestamp}.json"

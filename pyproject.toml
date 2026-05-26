@@ -22,6 +22,7 @@ dependencies = [
     "sentence-transformers>=3.0.0",  # Domain normalization embeddings
     "scikit-learn>=1.5.0",            # Clustering
     "numpy>=1.24.0",                  # Array operations
+    "pandas>=2.0.0",                  # Used by entity/agreement.py and entity/bayesian.py
 ]
 
 [project.optional-dependencies]

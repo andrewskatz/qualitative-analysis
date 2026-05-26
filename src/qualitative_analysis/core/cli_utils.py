@@ -15,8 +15,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-# Package version - should match pyproject.toml
-PACKAGE_VERSION = "0.1.0"
+# Package version — single source of truth is the installed package metadata,
+# which derives from pyproject.toml. See src/qualitative_analysis/__init__.py.
+from qualitative_analysis import __version__ as PACKAGE_VERSION
 
 
 def add_common_llm_args(parser: argparse.ArgumentParser) -> None:
