@@ -21,6 +21,7 @@ References:
 """
 
 import json
+import importlib.util
 import logging
 import warnings
 from dataclasses import dataclass, field
@@ -31,6 +32,16 @@ import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def _bayesian_install_instructions() -> str:
+    """Return standard installation guidance for Bayesian dependencies."""
+    return (
+        "Bayesian modeling requires PyMC and ArviZ. Install with:\n"
+        '  pip install -e ".[bayes]"\n'
+        "Or:\n"
+        "  pip install 'pymc>=5.21' arviz nutpie"
+    )
 
 
 def _invlogit_to_scale(logit_values, scale_min=0, scale_max=100):
@@ -44,24 +55,35 @@ def _invlogit_to_scale(logit_values, scale_min=0, scale_max=100):
 
 
 def check_pymc_available() -> bool:
-    """Check if PyMC and required Bayesian dependencies are installed."""
+    """Check whether Bayesian dependencies are installed without importing them."""
+    return (
+        importlib.util.find_spec("pymc") is not None
+        and importlib.util.find_spec("arviz") is not None
+    )
+
+
+def validate_bayesian_runtime() -> Tuple[bool, Optional[str]]:
+    """Validate that Bayesian dependencies can be imported in the current runtime."""
+    if not check_pymc_available():
+        return False, _bayesian_install_instructions()
+
     try:
         import pymc  # noqa: F401
         import arviz  # noqa: F401
-        return True
-    except ImportError:
-        return False
+        return True, None
+    except Exception as exc:
+        return (
+            False,
+            f"{_bayesian_install_instructions()}\n\n"
+            f"Installed dependencies failed to initialize in this runtime: {exc}",
+        )
 
 
 def _require_pymc():
     """Raise ImportError with install instructions if PyMC is not available."""
-    if not check_pymc_available():
-        raise ImportError(
-            "Bayesian modeling requires PyMC and ArviZ. Install with:\n"
-            '  pip install -e ".[bayes]"\n'
-            "Or:\n"
-            "  pip install 'pymc>=5.21' arviz nutpie"
-        )
+    ok, message = validate_bayesian_runtime()
+    if not ok:
+        raise ImportError(message or _bayesian_install_instructions())
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +136,9 @@ def prepare_beta_data(
     """
 
     df = scores_df.copy()
+    df[entity_col] = df[entity_col].astype(str)
+    df[participant_col] = df[participant_col].astype(str)
+    df[group_col] = df[group_col].astype(str)
 
     # Auto-detect number of runs
     if n_runs is None:
@@ -155,6 +180,9 @@ def prepare_beta_data(
                 })
 
     long_df = pd.DataFrame(records)
+    long_df["entity"] = long_df["entity"].astype(str)
+    long_df["participant"] = long_df["participant"].astype(str)
+    long_df["group"] = long_df["group"].astype(str)
 
     # Rescale [scale_min, scale_max] -> (0, 1) using Smithson & Verkuilen (2006) squeeze.
     # First normalize to [0, 1], then apply S&V: y = (x_norm * (N-1) + 0.5) / N

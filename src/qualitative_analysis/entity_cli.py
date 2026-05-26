@@ -914,7 +914,10 @@ async def run_entity_viz(args: argparse.Namespace) -> int:
 
     # Read scored entities from CSV
     print(f"Reading scored entities from: {input_path}")
-    entity_scores = _read_scored_entities_csv(input_path, dimension_names)
+    try:
+        entity_scores = _read_scored_entities_csv(input_path, dimension_names)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     if not entity_scores:
         print("No entities found in input CSV.")
@@ -1049,19 +1052,39 @@ def _read_scored_entities_csv(
                             "std": float(row.get(f"{dim_key}_std", 0)),
                             "cv": float(row.get(f"{dim_key}_cv", 0)),
                         }
-                    except ValueError:
-                        entity_data["dimensions"][dim_key] = {"mean": 50}
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(
+                            f"Invalid score data for entity '{entity}', dimension '{dim_key}': {exc}"
+                        ) from exc
                 elif score_key in row:
                     try:
                         entity_data["dimensions"][dim_key] = {"mean": float(row[score_key])}
-                    except ValueError:
-                        entity_data["dimensions"][dim_key] = {"mean": 50}
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(
+                            f"Invalid score data for entity '{entity}', dimension '{dim_key}': {exc}"
+                        ) from exc
                 else:
-                    entity_data["dimensions"][dim_key] = {"mean": 50}
+                    raise ValueError(
+                        f"Missing required score column for dimension '{dim_key}' "
+                        f"while reading entity '{entity}' from {path}"
+                    )
 
             entities.append(entity_data)
 
     return entities
+
+
+def _apply_participant_filter(
+    comparison: "ParticipantComparison",
+    participants_arg: Optional[str],
+) -> tuple["ParticipantComparison", Optional[List[str]]]:
+    """Subset a comparison object to the requested participants, preserving order."""
+    participants = None
+    if participants_arg:
+        participants = [p.strip() for p in participants_arg.split(",") if p.strip()]
+        participants = [p for p in participants if p in comparison.scores_by_participant]
+        comparison = comparison.subset_participants(participants)
+    return comparison, participants
 
 
 # =============================================================================
@@ -1509,12 +1532,15 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
     # Load scores
     print(f"Loading scored entities from: {input_path}")
     comparison = ParticipantComparison()
-    comparison.load_scores(
-        input_path,
-        participant_col=args.participant_col,
-        entity_col=args.entity_col,
-        dimensions=dimension_names,
-    )
+    try:
+        comparison.load_scores(
+            input_path,
+            participant_col=args.participant_col,
+            entity_col=args.entity_col,
+            dimensions=dimension_names,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     n_participants = len(comparison.scores_by_participant)
     print(f"Loaded {n_participants} participants")
@@ -1524,11 +1550,16 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
         return 1
 
     # Parse participants filter
-    participants = None
-    if args.participants:
-        participants = [p.strip() for p in args.participants.split(",")]
-        participants = [p for p in participants if p in comparison.scores_by_participant]
+    try:
+        comparison, participants = _apply_participant_filter(comparison, args.participants)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if participants is not None:
         print(f"Filtering to {len(participants)} participants: {participants}")
+        n_participants = len(comparison.scores_by_participant)
+        if n_participants < 2:
+            print("Need at least 2 participants for comparison after filtering.")
+            return 1
 
     # Parse group definitions (if any)
     groups = None
@@ -1561,7 +1592,7 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
             print(f"  {gname}: {len(members)} participants")
 
         # Set groups and get excluded participants
-        excluded = comparison.set_groups(groups)
+        comparison.set_groups(groups)
 
         # Compute group-level distances
         print(f"\nComputing group distances using {args.metric} metric (aggregate={aggregate_mode})...")
@@ -1855,6 +1886,7 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                 from qualitative_analysis.entity.bayesian import (
                     BayesianEntityModel,
                     BayesianVisualizer,
+                    validate_bayesian_runtime,
                 )
             except ImportError:
                 print(
@@ -1869,6 +1901,15 @@ async def run_entity_compare(args: argparse.Namespace) -> int:
                     print("Skipping Bayesian analysis (--method all).")
                     print(f"\nComparison complete. Output directory: {output_dir}")
                     return 0
+
+            runtime_ok, runtime_message = validate_bayesian_runtime()
+            if not runtime_ok:
+                print(f"\nError: {runtime_message}")
+                if method == "bayesian":
+                    return 1
+                print("Skipping Bayesian analysis (--method all).")
+                print(f"\nComparison complete. Output directory: {output_dir}")
+                return 0
 
             import pandas as pd
 
@@ -2170,8 +2211,9 @@ def _extract_entity_contexts_from_windows(
     Returns:
         List of dicts with 'entity', 'context', 'text_id' keys
     """
-    # Track entity contexts: {(entity, text_id): [contexts]}
-    entity_context_map: Dict[tuple, List[str]] = {}
+    # Track entity contexts by normalized key while preserving first-seen surface form.
+    # {(entity_lower, text_id): {"entity": original_case, "contexts": [...]}}
+    entity_context_map: Dict[tuple, Dict[str, Any]] = {}
 
     with open(windows_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -2212,16 +2254,19 @@ def _extract_entity_contexts_from_windows(
                 key = (entity.lower(), text_id)  # Use lowercase for dedup
 
                 if key not in entity_context_map:
-                    entity_context_map[key] = []
+                    entity_context_map[key] = {
+                        "entity": entity,
+                        "contexts": [],
+                    }
 
-                entity_context_map[key].append(window_text)
+                entity_context_map[key]["contexts"].append(window_text)
 
     # Convert to output format based on context_mode
     results = []
 
-    for (entity_lower, text_id), contexts in entity_context_map.items():
-        # Use original case from first occurrence
-        entity = entity_lower  # Could be improved to preserve original case
+    for (_, text_id), payload in entity_context_map.items():
+        entity = payload["entity"]
+        contexts = payload["contexts"]
 
         if context_mode == "window":
             # Use first window where entity appeared
@@ -2500,12 +2545,15 @@ async def run_entity_compare_viz(args: argparse.Namespace) -> int:
     # Load scores
     print(f"Loading scored entities from: {input_path}")
     comparison = ParticipantComparison()
-    comparison.load_scores(
-        input_path,
-        participant_col=args.participant_col,
-        entity_col=args.entity_col,
-        dimensions=dimension_names,
-    )
+    try:
+        comparison.load_scores(
+            input_path,
+            participant_col=args.participant_col,
+            entity_col=args.entity_col,
+            dimensions=dimension_names,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     n_participants = len(comparison.scores_by_participant)
     print(f"Loaded {n_participants} participants")
@@ -2515,10 +2563,13 @@ async def run_entity_compare_viz(args: argparse.Namespace) -> int:
         return 1
 
     # Parse participants filter
-    participants = None
-    if args.participants:
-        participants = [p.strip() for p in args.participants.split(",")]
-        participants = [p for p in participants if p in comparison.scores_by_participant]
+    try:
+        comparison, participants = _apply_participant_filter(comparison, args.participants)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if participants is not None and len(comparison.scores_by_participant) < 2:
+        print("Need at least 2 participants for comparison visualizations after filtering.")
+        return 1
 
     # Parse groups
     groups = None
@@ -2769,12 +2820,15 @@ async def run_entity_report(args: argparse.Namespace) -> int:
 
     # Load scores
     comparison = ParticipantComparison()
-    comparison.load_scores(
-        input_path,
-        participant_col=args.participant_col,
-        entity_col=args.entity_col,
-        dimensions=dimension_names,
-    )
+    try:
+        comparison.load_scores(
+            input_path,
+            participant_col=args.participant_col,
+            entity_col=args.entity_col,
+            dimensions=dimension_names,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     # Parse groups
     groups = None
@@ -3069,12 +3123,15 @@ async def run_entity_cluster(args: argparse.Namespace) -> int:
 
     # Load scores via ParticipantComparison
     comparison = ParticipantComparison()
-    comparison.load_scores(
-        str(input_path),
-        participant_col=args.participant_col,
-        entity_col=args.entity_col,
-        dimensions=dimension_names,
-    )
+    try:
+        comparison.load_scores(
+            str(input_path),
+            participant_col=args.participant_col,
+            entity_col=args.entity_col,
+            dimensions=dimension_names,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     print(f"Loaded {len(comparison.scores_by_participant)} participants")
     print(f"Dimensions: {dimension_names}")
@@ -3235,6 +3292,12 @@ def add_entity_detect_args(parser: argparse.ArgumentParser) -> None:
         default=0.1,
         help="LLM temperature for generation (default: 0.1).",
     )
+    parser.add_argument(
+        "--enable-thinking",
+        action="store_true",
+        default=False,
+        help="Enable reasoning/thinking mode for models that support it. Default: disabled.",
+    )
     # Windowing args (--window-size, --stride, --chunk-unit, --tokenizer, --no-windowing)
     from qualitative_analysis.core.cli_utils import add_common_windowing_args
     add_common_windowing_args(parser)
@@ -3244,6 +3307,17 @@ def add_entity_detect_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=1,
         help="Entity extraction prompt version (default: 1).",
+    )
+    parser.add_argument(
+        "--response-format",
+        choices=["json", "prompt"],
+        default="json",
+        help=(
+            "How to request structured extraction output: "
+            "'json' asks the provider for JSON mode when supported; "
+            "'prompt' relies on prompt-following only. "
+            "(default: json)."
+        ),
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -3294,6 +3368,7 @@ async def run_entity_detect(args: argparse.Namespace) -> int:
             model_name=args.model,
             base_url=args.base_url,
             temperature=args.temperature,
+            enable_thinking=getattr(args, "enable_thinking", False),
             log_prompts=log_llm,
             log_responses=log_llm,
         )
@@ -3301,6 +3376,7 @@ async def run_entity_detect(args: argparse.Namespace) -> int:
         from qualitative_analysis.core.providers import MLXProvider
         llm_provider = MLXProvider(
             model_name=args.model,
+            enable_thinking=getattr(args, "enable_thinking", False),
             log_prompts=log_llm,
             log_responses=log_llm,
         )
@@ -3315,6 +3391,7 @@ async def run_entity_detect(args: argparse.Namespace) -> int:
         prompt_version=args.prompt_version,
         chunk_unit=args.chunk_unit,
         tokenizer_name=args.tokenizer,
+        response_format=args.response_format,
     )
 
     # Read input CSV

@@ -329,16 +329,14 @@ class EntityVisualizer:
             values = []
             for dim in dimension_names:
                 dim_key = dim.lower()
-                dim_scores = score_data.get('dimensions', {})
-
-                if dim_key in dim_scores:
-                    dim_data = dim_scores[dim_key]
-                    if isinstance(dim_data, dict):
-                        values.append(dim_data.get('mean', dim_data.get('score', 50)))
-                    else:
-                        values.append(dim_data)
-                else:
-                    values.append(50)  # Default middle score
+                values.append(
+                    self._extract_dimension_value(
+                        score_data,
+                        dim_key,
+                        entity=entity,
+                        prefer_cv=False,
+                    )[0]
+                )
 
             values += values[:1]  # Close the polygon
 
@@ -418,28 +416,13 @@ class EntityVisualizer:
 
             for dim in dimension_names:
                 dim_key = dim.lower()
-
-                # Try multiple possible key formats
-                score = None
-                cv = 0
-
-                # Format 1: {dim}_mean (from flat dict)
-                if f'{dim_key}_mean' in score_data:
-                    score = score_data[f'{dim_key}_mean']
-                    cv = score_data.get(f'{dim_key}_cv', 0)
-                # Format 2: nested dimensions dict
-                elif 'dimensions' in score_data:
-                    dim_data = score_data['dimensions'].get(dim_key, {})
-                    if isinstance(dim_data, dict):
-                        score = dim_data.get('mean', dim_data.get('score', 50))
-                        cv = dim_data.get('cv', dim_data.get('coefficient_of_variation', 0))
-                    else:
-                        score = dim_data
-                # Format 3: direct dimension key
-                elif dim_key in score_data:
-                    score = score_data[dim_key]
-
-                raw_scores.append(score if score is not None else 50)
+                score, cv = self._extract_dimension_value(
+                    score_data,
+                    dim_key,
+                    entity=entity,
+                    prefer_cv=True,
+                )
+                raw_scores.append(score)
                 cv_values.append(cv if cv else 0)
 
             # Normalize scores to sum to 1 for ternary position
@@ -464,6 +447,46 @@ class EntityVisualizer:
             })
 
         return prepared
+
+    def _extract_dimension_value(
+        self,
+        score_data: Dict[str, Any],
+        dim_key: str,
+        entity: str,
+        prefer_cv: bool,
+    ) -> Tuple[float, float]:
+        """Extract a dimension score from supported input shapes or raise."""
+        score: Optional[float] = None
+        cv = 0.0
+
+        if f'{dim_key}_mean' in score_data:
+            score = score_data[f'{dim_key}_mean']
+            cv = score_data.get(f'{dim_key}_cv', 0) or 0
+        elif 'dimensions' in score_data and dim_key in score_data['dimensions']:
+            dim_data = score_data['dimensions'][dim_key]
+            if isinstance(dim_data, dict):
+                if 'mean' in dim_data:
+                    score = dim_data['mean']
+                elif 'score' in dim_data:
+                    score = dim_data['score']
+                if prefer_cv:
+                    cv = dim_data.get('cv', dim_data.get('coefficient_of_variation', 0)) or 0
+            else:
+                score = dim_data
+        elif dim_key in score_data:
+            score = score_data[dim_key]
+
+        if score is None:
+            raise ValueError(
+                f"Missing score for dimension '{dim_key}' while visualizing entity '{entity}'"
+            )
+
+        try:
+            return float(score), float(cv)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid score for dimension '{dim_key}' while visualizing entity '{entity}'"
+            ) from exc
 
     def _barycentric_to_cartesian(
         self,

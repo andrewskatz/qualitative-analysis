@@ -4,11 +4,14 @@ import json
 from qualitative_analysis.entity.models import DimensionDefinition, DimensionScore, EntityScore
 from qualitative_analysis.entity_cli import (
     _apply_scoring_scale_overrides,
+    _apply_participant_filter,
     _append_to_checkpoint,
     _entity_checkpoint_key,
     _load_checkpoint,
+    _read_scored_entities_csv,
     _resolve_scale,
 )
+from qualitative_analysis.entity.comparison import ParticipantComparison
 
 
 def test_checkpoint_round_trip_preserves_metadata_and_run_scores(tmp_path):
@@ -119,3 +122,39 @@ def test_downstream_scale_resolution_still_reads_metadata_and_respects_cli_overr
 
     assert scale.scale_min == 5
     assert scale.scale_max == 20
+
+
+def test_read_scored_entities_csv_raises_on_missing_dimension_values(tmp_path):
+    csv_path = tmp_path / "scores.csv"
+    csv_path.write_text(
+        "entity,text_id,social_mean,ecological_mean\nriver,p01,,55\n",
+        encoding="utf-8",
+    )
+
+    try:
+        _read_scored_entities_csv(csv_path, ["social", "ecological"])
+    except ValueError as exc:
+        assert "Invalid score data" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for missing score data")
+
+
+def test_apply_participant_filter_returns_subset_in_requested_order():
+    comparison = ParticipantComparison()
+    comparison.scores_by_participant = {
+        "p1": [1],
+        "p2": [2],
+        "p3": [3],
+    }
+    comparison.entity_names_by_participant = {
+        "p1": ["e1"],
+        "p2": ["e1"],
+        "p3": ["e1"],
+    }
+    comparison.dimension_names = ["social"]
+    comparison.entity_names = ["e1"]
+
+    filtered, participants = _apply_participant_filter(comparison, "p3,p1")
+
+    assert participants == ["p3", "p1"]
+    assert list(filtered.scores_by_participant.keys()) == ["p3", "p1"]

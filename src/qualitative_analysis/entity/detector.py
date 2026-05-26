@@ -70,6 +70,9 @@ class EntityDetector:
         prompt_version: Entity extraction prompt version (default: 1).
         chunk_unit: Windowing unit — 'sentences' or 'tokens' (default: 'sentences').
         tokenizer_name: Tokenizer for token-based chunking (default: 'cl100k_base').
+        response_format: Response mode for extraction calls:
+            'json' requests provider JSON mode when available;
+            'prompt' relies on prompt-following only.
 
     Example::
 
@@ -87,6 +90,7 @@ class EntityDetector:
         prompt_version: int = 1,
         chunk_unit: str = "sentences",
         tokenizer_name: str = "cl100k_base",
+        response_format: str = "json",
     ):
         """Initialize the entity detector."""
         self.llm_provider = llm_provider
@@ -103,6 +107,7 @@ class EntityDetector:
         self.prompt_version = prompt_version
         self.chunk_unit = chunk_unit
         self.tokenizer_name = tokenizer_name
+        self.response_format = response_format
 
     async def _extract_entities(self, text: str) -> List[str]:
         """
@@ -116,10 +121,14 @@ class EntityDetector:
         """
         prompt = self.prompt_template.replace("{text}", text)
 
+        generate_kwargs = {"temperature": 0.1}
+        if self.response_format == "json":
+            generate_kwargs["format"] = "json"
+
         response = await self.llm_provider.generate(
             prompt=prompt,
             system_prompt=self.system_prompt,
-            temperature=0.1,
+            **generate_kwargs,
         )
 
         try:
@@ -217,6 +226,7 @@ class EntityDetector:
                 "window_size": self.window_size if use_windowing else None,
                 "stride": self.stride if use_windowing else None,
                 "chunk_unit": self.chunk_unit if use_windowing else None,
+                "response_format": self.response_format,
             },
         )
 

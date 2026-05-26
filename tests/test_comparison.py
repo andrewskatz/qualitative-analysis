@@ -24,6 +24,7 @@ from qualitative_analysis.entity.comparison import (
     compute_pairwise_distances,
     wasserstein_distance_compositional,
 )
+from qualitative_analysis.entity.clustering import cluster_participants
 
 
 # =============================================================================
@@ -655,3 +656,84 @@ class TestLoadScores:
         comp.load_scores(csv_path)
 
         assert set(comp.dimension_names) == {"alpha", "beta"}
+
+    def test_missing_dimension_value_raises_by_default(self, tmp_path):
+        """Missing dimension values should fail fast instead of defaulting to 0."""
+        csv_path = tmp_path / "scores.csv"
+        self._write_csv(csv_path, [
+            {"text_id": "p1", "entity": "e1", "social_mean": "", "ecological_mean": "60"},
+        ])
+
+        comp = ParticipantComparison()
+        with pytest.raises(ValueError, match="Missing value for dimension 'social'"):
+            comp.load_scores(csv_path, dimensions=["social", "ecological"])
+
+    def test_unparseable_dimension_value_raises_by_default(self, tmp_path):
+        """Malformed dimension values should fail fast instead of defaulting to 0."""
+        csv_path = tmp_path / "scores.csv"
+        self._write_csv(csv_path, [
+            {"text_id": "p1", "entity": "e1", "social_mean": "oops", "ecological_mean": "60"},
+        ])
+
+        comp = ParticipantComparison()
+        with pytest.raises(ValueError, match="Unparseable value 'oops'"):
+            comp.load_scores(csv_path, dimensions=["social", "ecological"])
+
+    def test_subset_participants_preserves_requested_order(self, tmp_path):
+        """Participant subsetting should preserve the explicit caller order."""
+        csv_path = tmp_path / "scores.csv"
+        self._write_csv(csv_path, [
+            {"text_id": "p1", "entity": "e1", "social_mean": "80"},
+            {"text_id": "p2", "entity": "e1", "social_mean": "60"},
+            {"text_id": "p3", "entity": "e1", "social_mean": "40"},
+        ])
+
+        comp = ParticipantComparison()
+        comp.load_scores(csv_path, dimensions=["social"])
+
+        subset = comp.subset_participants(["p3", "p1"])
+
+        assert list(subset.scores_by_participant.keys()) == ["p3", "p1"]
+
+    def test_get_aligned_entity_scores_aligns_and_aggregates_duplicates(self, tmp_path):
+        """Aligned entity matrices should share one entity index and average duplicates."""
+        csv_path = tmp_path / "scores.csv"
+        self._write_csv(csv_path, [
+            {"text_id": "p1", "entity": "river", "social_mean": "80", "ecological_mean": "20"},
+            {"text_id": "p1", "entity": "river", "social_mean": "60", "ecological_mean": "40"},
+            {"text_id": "p1", "entity": "forest", "social_mean": "30", "ecological_mean": "70"},
+            {"text_id": "p2", "entity": "forest", "social_mean": "20", "ecological_mean": "80"},
+            {"text_id": "p2", "entity": "levee", "social_mean": "90", "ecological_mean": "10"},
+        ])
+
+        comp = ParticipantComparison()
+        comp.load_scores(csv_path, dimensions=["social", "ecological"])
+
+        entity_names, aligned, present = comp.get_aligned_entity_scores(["p1", "p2"])
+
+        assert entity_names == ["forest", "levee", "river"]
+        np.testing.assert_allclose(aligned["p1"][2], [70.0, 30.0])
+        np.testing.assert_allclose(aligned["p1"][0], [30.0, 70.0])
+        assert np.isnan(aligned["p1"][1]).all()
+        assert present["p1"].tolist() == [True, False, True]
+        assert present["p2"].tolist() == [True, True, False]
+
+
+def test_cluster_participants_supports_aitchison_metric():
+    """Non-Euclidean clustering should not crash when using a supported metric."""
+    comp = ParticipantComparison()
+    comp.scores_by_participant = {
+        "p1": np.array([[3.0, 2.0, 1.0], [6.0, 4.0, 2.0]]),
+        "p2": np.array([[4.0, 2.0, 1.0], [8.0, 4.0, 2.0]]),
+        "p3": np.array([[1.0, 2.0, 4.0], [2.0, 4.0, 8.0]]),
+    }
+    comp.entity_names_by_participant = {
+        pid: ["e1", "e2"] for pid in comp.scores_by_participant
+    }
+    comp.dimension_names = ["social", "ecological", "technological"]
+    comp.entity_names = ["e1", "e2"]
+
+    result = cluster_participants(comp, method="hierarchical", metric="aitchison", n_clusters=2)
+
+    assert result.method == "hierarchical"
+    assert len(result.labels) == 3

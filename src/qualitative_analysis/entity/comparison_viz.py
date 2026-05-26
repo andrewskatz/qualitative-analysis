@@ -681,9 +681,6 @@ class ComparisonVisualizer:
         # Draw triangle
         self._draw_triangle(ax, dims, show_labels=True, show_grid=True)
 
-        # Track entities for connecting lines
-        entity_positions: Dict[str, List[Tuple[float, float, str]]] = {}
-
         legend_handles = []
         legend_labels = []
 
@@ -695,17 +692,10 @@ class ComparisonVisualizer:
 
             # Convert to cartesian
             xs, ys = [], []
-            for i, score in enumerate(normalized):
+            for score in normalized:
                 x, y = self._barycentric_to_cartesian(score[1], score[2], score[0])
                 xs.append(x)
                 ys.append(y)
-
-                # Track for connecting lines
-                if connect_same_entities and i < len(self.comparison.entity_names):
-                    entity = self.comparison.entity_names[i]
-                    if entity not in entity_positions:
-                        entity_positions[entity] = []
-                    entity_positions[entity].append((x, y, pid))
 
             # Compute per-entity sizes for magnitude encoding (absolute scale)
             scores_raw = self.comparison.scores_by_participant[pid]
@@ -764,7 +754,20 @@ class ComparisonVisualizer:
 
         # Draw connecting lines between same entities
         if connect_same_entities:
-            for entity, positions in entity_positions.items():
+            entity_names, aligned_scores, presence_masks = self.comparison.get_aligned_entity_scores(pids)
+            entity_positions: Dict[str, List[Tuple[float, float, str]]] = {}
+
+            for pid in pids:
+                aligned = aligned_scores[pid]
+                present = presence_masks[pid]
+                for entity_idx, entity_name in enumerate(entity_names):
+                    if not present[entity_idx]:
+                        continue
+                    score = self._normalize_scores(aligned[entity_idx])
+                    x, y = self._barycentric_to_cartesian(score[1], score[2], score[0])
+                    entity_positions.setdefault(entity_name, []).append((x, y, pid))
+
+            for positions in entity_positions.values():
                 if len(positions) > 1:
                     for i in range(len(positions) - 1):
                         x1, y1, _ = positions[i]

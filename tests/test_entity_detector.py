@@ -15,6 +15,7 @@ import json
 import pytest
 from typing import List
 
+from qualitative_analysis.core.text import SlidingWindowProcessor
 from qualitative_analysis.entity.detector import (
     EntityDetector,
     EntityDetectionResult,
@@ -45,16 +46,18 @@ class MockLLMProvider:
         self.call_count = 0
         self.last_system_prompt = None
         self.last_prompt = None
+        self.last_kwargs = None
 
     async def generate(
         self,
         prompt: str,
         system_prompt: str = None,
-        temperature: float = 0.1,
+        **kwargs,
     ) -> str:
         """Return mock response."""
         self.last_system_prompt = system_prompt
         self.last_prompt = prompt
+        self.last_kwargs = kwargs
 
         if self.responses:
             response = self.responses[self.call_count % len(self.responses)]
@@ -64,6 +67,16 @@ class MockLLMProvider:
 
         self.call_count += 1
         return response
+
+
+class MockTokenizer:
+    """Minimal tokenizer stub for offline token-windowing tests."""
+
+    def encode(self, text: str) -> List[int]:
+        return [ord(ch) for ch in text]
+
+    def decode(self, tokens: List[int]) -> str:
+        return "".join(chr(token) for token in tokens)
 
 
 class TestEntityDetectionResult:
@@ -113,6 +126,14 @@ class TestEntityDetectionResult:
 
 class TestEntityDetector:
     """Tests for EntityDetector class."""
+
+    @pytest.fixture
+    def mock_tokenizer(self, monkeypatch):
+        monkeypatch.setattr(
+            SlidingWindowProcessor,
+            "_get_tokenizer",
+            lambda self: MockTokenizer(),
+        )
 
     @pytest.fixture
     def mock_llm(self):
@@ -190,6 +211,28 @@ class TestEntityDetector:
 
         assert result.entities == []
         assert result.window_count == 0
+
+    def test_detect_requests_json_response_mode_by_default(self):
+        """Detection should request provider JSON mode when configured."""
+        mock_llm = MockLLMProvider()
+        detector = EntityDetector(mock_llm, response_format="json")
+
+        result = run_async(detector.detect(text="Some text.", text_id="test"))
+
+        assert isinstance(result, EntityDetectionResult)
+        assert mock_llm.last_kwargs["format"] == "json"
+        assert result.metadata["response_format"] == "json"
+
+    def test_detect_can_use_prompt_only_response_mode(self):
+        """Prompt-only mode should not force provider JSON mode."""
+        mock_llm = MockLLMProvider()
+        detector = EntityDetector(mock_llm, response_format="prompt")
+
+        result = run_async(detector.detect(text="Some text.", text_id="test"))
+
+        assert isinstance(result, EntityDetectionResult)
+        assert "format" not in mock_llm.last_kwargs
+        assert result.metadata["response_format"] == "prompt"
 
     def test_entity_deduplication(self):
         """Duplicate entities within same text should be tracked uniquely."""
@@ -316,7 +359,7 @@ class TestEntityDetector:
         # May have empty entities due to parse failure
         assert isinstance(result, EntityDetectionResult)
 
-    def test_token_based_windowing(self):
+    def test_token_based_windowing(self, mock_tokenizer):
         """Token-based windowing should split text by token count."""
         mock_llm = MockLLMProvider()
         detector = EntityDetector(
@@ -336,7 +379,7 @@ class TestEntityDetector:
         assert len(result.entities) > 0
         assert result.metadata["chunk_unit"] == "tokens"
 
-    def test_chunk_unit_in_metadata(self):
+    def test_chunk_unit_in_metadata(self, mock_tokenizer):
         """Detection metadata should include chunk_unit."""
         mock_llm = MockLLMProvider()
 

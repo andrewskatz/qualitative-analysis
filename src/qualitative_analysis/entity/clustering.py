@@ -377,8 +377,12 @@ def cluster_participants(
         # Use the comparison's compute_distances method for other metrics
         from qualitative_analysis.entity.distances import compute_pairwise_distances
 
-        distance_matrix = compute_pairwise_distances(
-            centroids, metric=metric, aggregate=None
+        distance_matrix, _ = compute_pairwise_distances(
+            {
+                pid: comparison.scores_by_participant[pid]
+                for pid in participant_ids
+            },
+            metric=metric,
         )
 
     if method == "hierarchical":

@@ -244,6 +244,7 @@ class ParticipantComparison:
         entity_col: str = "entity",
         dimension_pattern: str = "{dim}_mean",
         dimensions: Optional[List[str]] = None,
+        strict: bool = True,
     ) -> None:
         """
         Load scored entities from CSV file.
@@ -293,21 +294,27 @@ class ParticipantComparison:
                 col_name = dimension_pattern.format(dim=dim)
                 raw_val = row.get(col_name)
                 if raw_val is None or raw_val == "":
-                    logger.warning(
+                    message = (
                         f"Missing value for dimension '{dim}' "
                         f"(column '{col_name}') for participant "
-                        f"'{participant}', entity '{entity}' — defaulting to 0.0"
+                        f"'{participant}', entity '{entity}'"
                     )
+                    if strict:
+                        raise ValueError(message)
+                    logger.warning(f"{message} — defaulting to 0.0")
                     score = 0.0
                 else:
                     try:
                         score = float(raw_val)
                     except (ValueError, TypeError):
-                        logger.warning(
+                        message = (
                             f"Unparseable value '{raw_val}' for dimension "
                             f"'{dim}' (column '{col_name}') for participant "
-                            f"'{participant}', entity '{entity}' — defaulting to 0.0"
+                            f"'{participant}', entity '{entity}'"
                         )
+                        if strict:
+                            raise ValueError(message)
+                        logger.warning(f"{message} — defaulting to 0.0")
                         score = 0.0
                 score_vector.append(score)
 
@@ -328,6 +335,103 @@ class ParticipantComparison:
             f"Loaded scores for {len(self.scores_by_participant)} participants, "
             f"{len(self.entity_names)} entities, {len(self.dimension_names)} dimensions"
         )
+
+    def subset_participants(
+        self,
+        participant_ids: List[str],
+    ) -> "ParticipantComparison":
+        """Return a new comparison object restricted to the requested participants."""
+        selected = [pid for pid in participant_ids if pid in self.scores_by_participant]
+        if not selected:
+            raise ValueError("No requested participants found in loaded scores")
+
+        subset = ParticipantComparison()
+        subset.dimension_names = list(self.dimension_names)
+        subset.scores_by_participant = {
+            pid: self.scores_by_participant[pid]
+            for pid in selected
+        }
+        subset.entity_names_by_participant = {
+            pid: list(self.entity_names_by_participant.get(pid, []))
+            for pid in selected
+        }
+        subset.entity_names = sorted(
+            {
+                entity
+                for pid in selected
+                for entity in subset.entity_names_by_participant.get(pid, [])
+            }
+        )
+        if hasattr(self, "groups"):
+            subset.groups = {
+                group_name: [pid for pid in members if pid in selected]
+                for group_name, members in self.groups.items()
+                if any(pid in selected for pid in members)
+            }
+        return subset
+
+    def get_aligned_entity_scores(
+        self,
+        participants: Optional[List[str]] = None,
+        fill_value: float = np.nan,
+    ) -> Tuple[List[str], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+        """
+        Build a shared participant x entity representation.
+
+        Returns one aligned score matrix per participant, indexed by the same
+        sorted entity list. When a participant has multiple rows for the same
+        entity, those rows are aggregated by mean before alignment.
+
+        Args:
+            participants: Optional subset of participant IDs to include.
+            fill_value: Value used where an entity is absent for a participant.
+
+        Returns:
+            Tuple of:
+                - ordered entity names
+                - dict pid -> aligned score matrix (n_entities, n_dims)
+                - dict pid -> boolean presence mask (n_entities,)
+        """
+        if participants:
+            pids = [p for p in participants if p in self.scores_by_participant]
+        else:
+            pids = list(self.scores_by_participant.keys())
+
+        if not pids:
+            raise ValueError("No participants available for entity alignment")
+
+        ordered_entities = sorted(
+            {
+                entity
+                for pid in pids
+                for entity in self.entity_names_by_participant.get(pid, [])
+            }
+        )
+        entity_to_idx = {entity: idx for idx, entity in enumerate(ordered_entities)}
+        n_dims = len(self.dimension_names)
+
+        aligned_scores: Dict[str, np.ndarray] = {}
+        presence_masks: Dict[str, np.ndarray] = {}
+
+        for pid in pids:
+            aligned = np.full((len(ordered_entities), n_dims), fill_value, dtype=float)
+            present = np.zeros(len(ordered_entities), dtype=bool)
+
+            grouped_scores: Dict[str, List[np.ndarray]] = {}
+            names = self.entity_names_by_participant.get(pid, [])
+            rows = self.scores_by_participant.get(pid, np.empty((0, n_dims)))
+            for entity, row in zip(names, rows):
+                grouped_scores.setdefault(entity, []).append(np.asarray(row, dtype=float))
+
+            for entity, entity_rows in grouped_scores.items():
+                idx = entity_to_idx[entity]
+                aligned[idx] = np.vstack(entity_rows).mean(axis=0)
+                present[idx] = True
+
+            aligned_scores[pid] = aligned
+            presence_masks[pid] = present
+
+        return ordered_entities, aligned_scores, presence_masks
 
     def compute_distances(
         self,

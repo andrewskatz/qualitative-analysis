@@ -7,6 +7,7 @@ and round-trip score persistence.
 
 import json
 import csv
+import os
 import statistics
 from pathlib import Path
 from typing import Dict, List
@@ -25,7 +26,27 @@ from qualitative_analysis.entity.models import (
 from qualitative_analysis.entity.bayesian import (
     prepare_beta_data,
     check_pymc_available,
+    validate_bayesian_runtime,
 )
+
+for env_key, env_value in {
+    "ARVIZ_DATA": "/tmp/arviz_data",
+    "MPLCONFIGDIR": "/tmp/mplconfig",
+    "XDG_CACHE_HOME": "/tmp",
+}.items():
+    os.environ.setdefault(env_key, env_value)
+
+Path(os.environ["ARVIZ_DATA"]).mkdir(parents=True, exist_ok=True)
+Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+
+
+def _bayesian_runtime_available() -> bool:
+    ready, _ = validate_bayesian_runtime()
+    return ready
+
+
+_BAYESIAN_RUNTIME_AVAILABLE, _BAYESIAN_RUNTIME_MESSAGE = validate_bayesian_runtime()
+_BAYESIAN_RUNTIME_REASON = _BAYESIAN_RUNTIME_MESSAGE or "PyMC/ArviZ runtime not available"
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +234,33 @@ class TestPrepareBetaData:
         assert data["n_participants"] == 1
         assert data["n_groups"] == 1
 
+    def test_numeric_participant_ids_are_supported(self):
+        """Numeric participant identifiers should be normalized without mapping failures."""
+        df = pd.DataFrame(
+            [
+                {
+                    "text_id": 101,
+                    "entity": "entity_1",
+                    "group": "A",
+                    "social_run1": 50,
+                    "social_mean": 50,
+                },
+                {
+                    "text_id": 202,
+                    "entity": "entity_1",
+                    "group": "B",
+                    "social_run1": 60,
+                    "social_mean": 60,
+                },
+            ]
+        )
+
+        data = prepare_beta_data(df, ["social"], n_runs=1)
+
+        assert data["participant_names"] == ["101", "202"]
+        assert list(sorted(data["participant_to_group"].keys())) == ["101", "202"]
+        assert data["long_df"]["participant_idx"].tolist() == [0, 1]
+
 
 # ---------------------------------------------------------------------------
 # Tests: EntityScore run-level serialization
@@ -345,8 +393,8 @@ class TestRunLevelSerialization:
 
 
 @pytest.mark.skipif(
-    not check_pymc_available(),
-    reason="PyMC not installed",
+    not _BAYESIAN_RUNTIME_AVAILABLE,
+    reason=_BAYESIAN_RUNTIME_REASON,
 )
 class TestBayesianModelBuild:
     """Tests for model construction (requires PyMC)."""
@@ -447,11 +495,8 @@ class TestCheckPymcAvailable:
 
     def test_false_when_missing(self):
         """Should return False when pymc is not importable."""
-        with patch.dict("sys.modules", {"pymc": None}):
-            # Force re-check by calling the function
-            # Note: this may not work perfectly due to caching;
-            # the real test is that it doesn't crash
-            pass
+        with patch("importlib.util.find_spec", return_value=None):
+            assert check_pymc_available() is False
 
 
 # ---------------------------------------------------------------------------
@@ -526,8 +571,8 @@ def ground_truth_df():
 
 
 @pytest.mark.skipif(
-    not check_pymc_available(),
-    reason="PyMC not installed",
+    not _BAYESIAN_RUNTIME_AVAILABLE,
+    reason=_BAYESIAN_RUNTIME_REASON,
 )
 class TestBayesianIntegration:
     """
@@ -691,6 +736,10 @@ class TestBayesianIntegration:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not _BAYESIAN_RUNTIME_AVAILABLE,
+    reason=_BAYESIAN_RUNTIME_REASON,
+)
 class TestAuditFixes:
     """Tests validating the fixes from the 2026-02-17 Bayesian audit."""
 
@@ -1039,8 +1088,8 @@ class TestCustomScale:
         assert len(data["long_df"]) > 0
 
     @pytest.mark.skipif(
-        not check_pymc_available(),
-        reason="PyMC not installed",
+        not _BAYESIAN_RUNTIME_AVAILABLE,
+        reason=_BAYESIAN_RUNTIME_REASON,
     )
     def test_bayesian_model_custom_scale(self, custom_scale_df):
         """BayesianEntityModel should accept and use custom scale."""
