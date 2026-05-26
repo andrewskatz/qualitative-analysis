@@ -1,7 +1,7 @@
 # Fork `qualitative-analysis` into a Standalone Repo
 
 **Date:** 2026-05-25
-**Status:** Phase 0 complete; awaiting Phase 1 go-ahead
+**Status:** Phase 1 complete (inventory drafted); awaiting reviewer approval before Phase 2
 
 ## Overview
 
@@ -148,4 +148,4 @@ If anything goes wrong:
 
 ---
 
-**Next step:** approve Phase 1 (path inventory). See [`02-execution-log.md`](02-execution-log.md) for Phase 0 details.
+**Next step:** review [`01-path-inventory.md`](01-path-inventory.md) and approve before Phase 2 (`git filter-repo`). See [`02-execution-log.md`](02-execution-log.md) for Phase 0 and Phase 1 details.

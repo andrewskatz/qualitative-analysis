@@ -91,7 +91,71 @@ resolving it is unrelated work that doesn't belong to this extraction effort.
 
 ## Phase 1 — Path inventory
 
-**Status:** Pending — next step.
+**Status:** Complete (2026-05-26); awaiting reviewer approval before Phase 2.
+
+### 1.1 Catalog `docs/` for package-related content
+
+Surveyed all subdirs of `docs/` (planning, progress-notes, audits, explanations,
+guides, bug-reports, testing, setup, team-protocols, api, onboarding). Most
+audits/bug-reports/testing/setup/team-protocols/api/onboarding docs are web-app
+concerns and stay in the parent.
+
+### 1.2 Classify each candidate (Explore agent + spot checks)
+
+Delegated the per-doc classification to an Explore agent, which read the lead
+file of each candidate planning dir and grep-scanned the progress-notes
+directory. Spot-checked four cases:
+
+| Path | Agent → Reviewed | Reason for adjustment |
+|---|---|---|
+| `2025-12-25-fig-lang-source-target-labeling/` | SPLIT → **STAY** | Doc is about the web-app `text_items` JSONB schema and "post-extraction analysis" inside the web app, citing SETS as design inspiration only. Not a package design doc. |
+| `2026-04-08-scoring-experiment-multi-model-analysis.md` | STAY → **MOVE** | Lead line: `**Package:** qualitative-analysis`. Multi-model factorial scoring experiment run through the package's entity pathway. The agent misclassified, likely because the file was untracked when it grep-scanned. |
+| `2026-05-25-qualitative-analysis-package-fork/` | (not surveyed by agent) → **MOVE** | This planning dir documents the extraction itself; moves with the package as historical record. |
+| Agent "summary" line said 30 progress notes MOVE | corrected to **10 progress notes** | Summary line had a counting error; reconciled against the 9 it actually listed + the one above. |
+
+### 1.3 Verify no collisions after `--path-rename qualitative-analysis/:`
+
+```
+$ comm -12 \
+    <(find qualitative-analysis/docs -type f | sed 's|qualitative-analysis/||' | sort) \
+    <(find docs -type f | sort)
+(empty)
+```
+
+The package's only internal docs file
+`qualitative-analysis/docs/progress-notes/2026-01-26-entity-scoring-context-fix.md`
+will land at `docs/progress-notes/...` in the new repo with no collision against
+the 10 progress notes moving from the parent.
+
+### 1.4 Commit untracked package-related docs (so filter-repo picks them up)
+
+Three doc paths were untracked when the inventory was being built. They are
+all MOVE candidates, so they had to be committed before filter-repo or they
+would be silently excluded from the new repo's history:
+
+```
+$ git add \
+    docs/planning/2026-03-10-qual-analysis-fig-lang-pathway-audit/ \
+    docs/planning/2026-03-17-qualitative-analysis-entity-pathway-audit/ \
+    docs/progress-notes/2026-04-08-scoring-experiment-multi-model-analysis.md
+$ git commit -m "docs: commit untracked qa package audits + scoring experiment note"
+[main 0eee5fa] ... 9 files changed, 1477 insertions(+)
+$ git push origin main
+   ae1f296..0eee5fa  main -> main
+```
+
+### 1.5 Final inventory
+
+See [`01-path-inventory.md`](01-path-inventory.md). Tally:
+
+- **Code:** 1 directory (`qualitative-analysis/`, rename to root)
+- **Planning dirs:** 21 dirs under `docs/planning/`
+- **Standalone docs:** 2 files (one in `docs/explanations/`, one in `docs/guides/`)
+- **Progress notes:** 10 files under `docs/progress-notes/`
+- **Total filter-repo path args:** 34, plus the path-rename.
+
+The inventory file also pre-renders the exact `git filter-repo` command line.
+
 
 ---
 
