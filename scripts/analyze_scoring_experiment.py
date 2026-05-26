@@ -99,16 +99,50 @@ def condition_key(scale_label, prompt):
     return f"{scale_label}_{prompt}"
 
 
+def _dedup(data, key, col):
+    """Return a de-duplicated (entity, col) DataFrame, averaging duplicate entities."""
+    df = data[key][["entity", col]].dropna(subset=[col])
+    return df.groupby("entity", as_index=False)[col].mean()
+
+
 def aligned_values(data, key_a, key_b, col):
     """Return paired arrays aligned on the 'entity' column.
 
-    Handles cases where one condition may have a missing entity
-    (e.g., a scoring failure) by doing an inner join.
+    Handles duplicate entities (averaged) and missing entities
+    (inner join) so the two arrays always have the same length.
     """
-    df_a = data[key_a][["entity", col]].dropna(subset=[col])
-    df_b = data[key_b][["entity", col]].dropna(subset=[col])
+    df_a = _dedup(data, key_a, col)
+    df_b = _dedup(data, key_b, col)
     merged = df_a.merge(df_b, on="entity", suffixes=("_a", "_b"))
     return merged[f"{col}_a"].values, merged[f"{col}_b"].values
+
+
+def aligned_mean_over_keys(data, keys, col, entity_set=None):
+    """Compute per-entity mean of *col* across multiple condition *keys*.
+
+    De-duplicates (averages) each condition first, then inner-joins on
+    'entity' so the result length is consistent.
+
+    If *entity_set* is provided, the result is restricted to those
+    entities, ensuring comparability across calls.
+    """
+    base = _dedup(data, keys[0], col).rename(columns={col: f"{col}_0"})
+    for i, k in enumerate(keys[1:], start=1):
+        other = _dedup(data, k, col).rename(columns={col: f"{col}_{i}"})
+        base = base.merge(other, on="entity")
+    if entity_set is not None:
+        base = base[base["entity"].isin(entity_set)]
+    value_cols = [f"{col}_{i}" for i in range(len(keys))]
+    return base[value_cols].values.mean(axis=1)
+
+
+def common_entities_across(data, all_keys, col):
+    """Return the set of entities present (non-null for *col*) in every key."""
+    sets = []
+    for k in all_keys:
+        ents = set(data[k].dropna(subset=[col])["entity"].unique())
+        sets.append(ents)
+    return set.intersection(*sets)
 
 
 # ── Data Loading ─────────────────────────────────────────────────────
@@ -312,14 +346,16 @@ def section2_scale_effects(data):
     scale_pairs = [("0-100", "1-10"), ("0-100", "1-5"), ("1-10", "1-5")]
 
     for dim in DIMENSIONS:
+        # Find entities present in ALL 9 conditions for this dimension
+        col = f"{dim}_mean_frac"
+        all_keys = [condition_key(sl, p) for sl in scale_labels for p in PROMPTS]
+        ent_set = common_entities_across(data, all_keys, col)
+
         # Compute entity means collapsed over prompt for each scale
         scale_means = {}
         for sl in scale_labels:
-            combined = []
-            for prompt in PROMPTS:
-                key = condition_key(sl, prompt)
-                combined.append(data[key][f"{dim}_mean_frac"].values)
-            scale_means[sl] = np.mean(combined, axis=0)  # average over prompts
+            keys = [condition_key(sl, p) for p in PROMPTS]
+            scale_means[sl] = aligned_mean_over_keys(data, keys, col, entity_set=ent_set)
 
         # Friedman test
         fr_stat, fr_p = sp_stats.friedmanchisquare(
@@ -364,10 +400,13 @@ def section2_scale_effects(data):
     fig.suptitle("Scale Main Effects: Paired Difference Distributions", fontsize=13, fontweight="bold")
     for ax_i, dim in enumerate(DIMENSIONS):
         ax = axes[ax_i]
+        col = f"{dim}_mean_frac"
+        all_keys = [condition_key(sl, p) for sl in scale_labels for p in PROMPTS]
+        ent_set = common_entities_across(data, all_keys, col)
         scale_means = {}
         for sl in scale_labels:
-            combined = [data[condition_key(sl, p)][f"{dim}_mean_frac"].values for p in PROMPTS]
-            scale_means[sl] = np.mean(combined, axis=0)
+            keys = [condition_key(sl, p) for p in PROMPTS]
+            scale_means[sl] = aligned_mean_over_keys(data, keys, col, entity_set=ent_set)
 
         diff_data = []
         pair_labels = []
@@ -409,10 +448,14 @@ def section3_prompt_effects(data):
     prompt_pairs = [("v2", "v3"), ("v2", "v4"), ("v3", "v4")]
 
     for dim in DIMENSIONS:
+        col = f"{dim}_mean_frac"
+        all_keys = [condition_key(sl, pr) for sl, _, _ in SCALES for pr in PROMPTS]
+        ent_set = common_entities_across(data, all_keys, col)
+
         prompt_means = {}
         for pr in PROMPTS:
-            combined = [data[condition_key(sl, pr)][f"{dim}_mean_frac"].values for sl, _, _ in SCALES]
-            prompt_means[pr] = np.mean(combined, axis=0)
+            keys = [condition_key(sl, pr) for sl, _, _ in SCALES]
+            prompt_means[pr] = aligned_mean_over_keys(data, keys, col, entity_set=ent_set)
 
         fr_stat, fr_p = sp_stats.friedmanchisquare(
             prompt_means["v2"], prompt_means["v3"], prompt_means["v4"]
@@ -455,10 +498,13 @@ def section3_prompt_effects(data):
     fig.suptitle("Prompt Main Effects: Paired Difference Distributions", fontsize=13, fontweight="bold")
     for ax_i, dim in enumerate(DIMENSIONS):
         ax = axes[ax_i]
+        col = f"{dim}_mean_frac"
+        all_keys = [condition_key(sl, pr) for sl, _, _ in SCALES for pr in PROMPTS]
+        ent_set = common_entities_across(data, all_keys, col)
         prompt_means = {}
         for pr in PROMPTS:
-            combined = [data[condition_key(sl, pr)][f"{dim}_mean_frac"].values for sl, _, _ in SCALES]
-            prompt_means[pr] = np.mean(combined, axis=0)
+            keys = [condition_key(sl, pr) for sl, _, _ in SCALES]
+            prompt_means[pr] = aligned_mean_over_keys(data, keys, col, entity_set=ent_set)
 
         diff_data = []
         pair_labels = []
@@ -539,12 +585,22 @@ def section4_interaction(data):
     prompt_pairs = [("v2", "v3"), ("v2", "v4"), ("v3", "v4")]
 
     for dim in DIMENSIONS:
+        col = f"{dim}_mean_frac"
+        # Find entities common to ALL 9 conditions for this dimension
+        all_keys = [condition_key(sl, p) for sl in [s[0] for s in SCALES] for p in PROMPTS]
+        ent_set = common_entities_across(data, all_keys, col)
+
         # Test: does the v4-v2 prompt effect differ across scales?
+        # Use global entity set so all scale groups have equal length
+        all_pe_keys = [condition_key(sl, p) for sl in [s[0] for s in SCALES] for p in ["v2", "v4"]]
+        ent_set_pe = common_entities_across(data, all_pe_keys, col)
         prompt_effects = {}
         for sl in [s[0] for s in SCALES]:
-            v4_vals = data[condition_key(sl, "v4")][f"{dim}_mean_frac"].values
-            v2_vals = data[condition_key(sl, "v2")][f"{dim}_mean_frac"].values
-            prompt_effects[sl] = v4_vals - v2_vals
+            df_v4 = _dedup(data, condition_key(sl, "v4"), col)
+            df_v2 = _dedup(data, condition_key(sl, "v2"), col)
+            merged = df_v4.merge(df_v2, on="entity", suffixes=("_v4", "_v2"))
+            merged = merged[merged["entity"].isin(ent_set_pe)].sort_values("entity")
+            prompt_effects[sl] = merged[f"{col}_v4"].values - merged[f"{col}_v2"].values
 
         fr_stat, fr_p = sp_stats.friedmanchisquare(
             prompt_effects["0-100"], prompt_effects["1-10"], prompt_effects["1-5"]
@@ -557,10 +613,15 @@ def section4_interaction(data):
         # Interaction contrasts
         for sp in scale_pairs:
             for pp in prompt_pairs:
-                eff_s1 = (data[condition_key(sp[0], pp[1])][f"{dim}_mean_frac"].values -
-                          data[condition_key(sp[0], pp[0])][f"{dim}_mean_frac"].values)
-                eff_s2 = (data[condition_key(sp[1], pp[1])][f"{dim}_mean_frac"].values -
-                          data[condition_key(sp[1], pp[0])][f"{dim}_mean_frac"].values)
+                keys_4 = [condition_key(sp[0], pp[0]), condition_key(sp[0], pp[1]),
+                           condition_key(sp[1], pp[0]), condition_key(sp[1], pp[1])]
+                ent_set_4 = common_entities_across(data, keys_4, col)
+                dfs = {}
+                for k in keys_4:
+                    dfs[k] = _dedup(data, k, col)
+                    dfs[k] = dfs[k][dfs[k]["entity"].isin(ent_set_4)].sort_values("entity")
+                eff_s1 = dfs[keys_4[1]][col].values - dfs[keys_4[0]][col].values
+                eff_s2 = dfs[keys_4[3]][col].values - dfs[keys_4[2]][col].values
                 interaction = eff_s1 - eff_s2
                 m = float(np.mean(interaction))
                 m_, cl, ch = single_bootstrap_ci(interaction)
@@ -585,10 +646,16 @@ def section4_interaction(data):
         labels_matrix = np.empty((len(scale_pairs), len(prompt_pairs)), dtype=object)
         for si, sp in enumerate(scale_pairs):
             for pi, pp in enumerate(prompt_pairs):
-                eff_s1 = (data[condition_key(sp[0], pp[1])][f"{dim}_mean_frac"].values -
-                          data[condition_key(sp[0], pp[0])][f"{dim}_mean_frac"].values)
-                eff_s2 = (data[condition_key(sp[1], pp[1])][f"{dim}_mean_frac"].values -
-                          data[condition_key(sp[1], pp[0])][f"{dim}_mean_frac"].values)
+                col_d = f"{dim}_mean_frac"
+                keys_4 = [condition_key(sp[0], pp[0]), condition_key(sp[0], pp[1]),
+                           condition_key(sp[1], pp[0]), condition_key(sp[1], pp[1])]
+                ent_set_4 = common_entities_across(data, keys_4, col_d)
+                dfs = {}
+                for k in keys_4:
+                    dfs[k] = _dedup(data, k, col_d)
+                    dfs[k] = dfs[k][dfs[k]["entity"].isin(ent_set_4)].sort_values("entity")
+                eff_s1 = dfs[keys_4[1]][col_d].values - dfs[keys_4[0]][col_d].values
+                eff_s2 = dfs[keys_4[3]][col_d].values - dfs[keys_4[2]][col_d].values
                 interaction = float(np.mean(eff_s1 - eff_s2))
                 matrix[si, pi] = interaction
                 labels_matrix[si, pi] = f"{interaction:.4f}"
@@ -819,8 +886,7 @@ def section6_rank_preservation(data):
     key_b = condition_key("1-5", "v4")
     for ax_i, dim in enumerate(DIMENSIONS):
         ax = axes[ax_i]
-        a_vals = data[key_a][f"{dim}_mean_frac"].values
-        b_vals = data[key_b][f"{dim}_mean_frac"].values
+        a_vals, b_vals = aligned_values(data, key_a, key_b, f"{dim}_mean_frac")
         rank_a = sp_stats.rankdata(-a_vals)  # descending
         rank_b = sp_stats.rankdata(-b_vals)
         displacements = np.abs(rank_a - rank_b)
@@ -1074,8 +1140,7 @@ def section8_efficiency(data, table5):
                                  (table5["dimension"] == dim)]
                 if len(rel_row) > 0:
                     alphas.append(rel_row.iloc[0]["alpha"])
-                a = data[ref_key][f"{dim}_mean_frac"].values
-                b = data[key][f"{dim}_mean_frac"].values
+                a, b = aligned_values(data, ref_key, key, f"{dim}_mean_frac")
                 rho, _ = sp_stats.spearmanr(a, b)
                 rhos.append(rho)
 
