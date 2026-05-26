@@ -1,7 +1,7 @@
 # Fork `qualitative-analysis` into a Standalone Repo
 
 **Date:** 2026-05-25
-**Status:** Phase 4 complete (new repo live at `git@github.com:andrewskatz/qualitative-analysis.git`); awaiting Phase 5 go-ahead (parent cleanup)
+**Status:** ✅ Complete (2026-05-26). All six phases finished. See [`02-execution-log.md`](02-execution-log.md) for the full record.
 
 ## Overview
 
@@ -158,4 +158,4 @@ If anything goes wrong:
 
 ---
 
-**Next step:** approve Phase 5 (parent cleanup — `git rm` the moved paths, update requirements.txt, sync planning dir to new repo). See [`02-execution-log.md`](02-execution-log.md) for Phase 0–4 details. The new repo is live at `git@github.com:andrewskatz/qualitative-analysis.git`.
+**Done.** This repo is live at `git@github.com:andrewskatz/qualitative-analysis.git` (private, tagged `v0.2.0`). The parent (`entity-id-app-v2`) installs this package via pinned pip URL in its `requirements.txt`. See [`02-execution-log.md`](02-execution-log.md) for the complete six-phase record.

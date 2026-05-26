@@ -370,10 +370,156 @@ branch 'main' set up to track 'origin/main'.
 
 ## Phase 5 — Clean up parent
 
-**Status:** Pending.
+**Status:** Complete (2026-05-26).
+
+### 5.0 Pre-step: tag v0.2.0 on this repo
+
+```
+$ git tag -a v0.2.0 -m "v0.2.0 — first release as standalone repo"
+$ git push origin v0.2.0
+```
+
+So `requirements.txt` in the parent can pin to `@v0.2.0` rather than tracking
+`@main`.
+
+### 5.1 Sync planning dir to this repo
+
+Before the parent deleted its copy of this planning dir, rsync'd the
+parent's current state over this repo's frozen-at-extraction copy.
+Captured Phase 2/3/4 entries that had been written in the parent post-extraction.
+
+Commit in this repo: `b44f7bb docs: sync fork plan from parent (adds Phase 2/3/4 entries)`.
+
+### 5.2 Deprecation strategy: `mv` instead of `rm`
+
+Per user preference, in the parent's working tree the to-be-removed paths
+were `mv`'d into a gitignored safety folder
+`entity-id-app-v2/_deprecated_qa_fork_20260526/` (atomic same-filesystem
+renames) rather than `rm`'d. They are gone from git history but recoverable
+on disk for as long as the user keeps the deprecated folder around.
+
+Paths moved (34 total → 250 tracked files / 67 808 lines):
+- `qualitative-analysis/` (the package directory itself)
+- 21 planning dirs under `docs/planning/...`
+- 10 progress notes under `docs/progress-notes/...`
+- 2 standalone files (`docs/explanations/figurative-language-detection-explained.md`, `docs/guides/extractor-selection-guide.md`)
+
+### 5.3 `requirements.txt` update
+
+Added to parent:
+```
+qualitative-analysis @ git+ssh://git@github.com/andrewskatz/qualitative-analysis.git@v0.2.0
+```
+SSH (not HTTPS) because the new repo is private and the user already has
+their SSH key on GitHub; HTTPS would have needed credential setup.
+
+### 5.4 Install in parent venv + verify publications scripts
+
+Two scripts in `publications-and-presentations/llm-qualitative-scoring-methodology/`
+were known consumers. Two findings:
+
+1. **Parent's `venv/bin/pip` is broken** — its shebang hardcodes a path to
+   `/Users/akatz4/Documents/ak fac/research/projects/entity-id-app-v1/venv/bin/python`
+   (the venv was copied from v1 to v2 long ago but never had its scripts
+   rewritten). First install attempt silently installed into v1's venv.
+   Workaround: use `venv/bin/python -m pip` (which is correct). Memory note
+   added so this doesn't bite us again.
+
+2. **Publications scripts don't actually import the package** — they only
+   read CSV outputs from `qualitative-analysis/output/`. Since that dir was
+   3.8 GB and 53 experiment subdirs, gitignored, and not really "package
+   output" anymore (it's historical scoring-experiment data the manuscript
+   cites), we relocated it: `_deprecated_.../qualitative-analysis/output/`
+   → `entity-id-app-v2/scoring-experiment-output/` (added to parent
+   .gitignore). Both scripts updated to point at the new path:
+   - `human-coding-study/analysis/select_sample.py`
+   - `scripts/generate_tables.py`
+   (Both scripts are in an untracked dir in the parent — `git status`
+   showed `publications-and-presentations/llm-qualitative-scoring-methodology/`
+   as `??` — so the edits aren't part of the Phase 5 parent commit; they
+   will be carried when the user eventually tracks/commits that dir.)
+
+### 5.5 Parent README pointer
+
+Added a brief note at the top of `entity-id-app-v2/README.md` directing
+readers to the new repo and the planning dir.
+
+### 5.6 Phase 5 commit + push (parent)
+
+```
+[main 13c8edc] qa package fork — Phase 5: parent cleanup
+ 253 files changed, 14 insertions(+), 67808 deletions(-)
+```
+
+Pushed to `andrewskatz/entity-id-app-v2`.
 
 ---
 
 ## Phase 6 — Verification
 
-**Status:** Pending.
+**Status:** Complete (2026-05-26).
+
+### 6.1 Fresh-clone smoke test (this repo)
+
+Simulated a brand-new contributor:
+
+```
+$ rm -rf /tmp/qa-fresh-clone
+$ git clone git@github.com:andrewskatz/qualitative-analysis.git /tmp/qa-fresh-clone
+$ cd /tmp/qa-fresh-clone
+$ git log --oneline -1
+b44f7bb docs: sync fork plan from parent (adds Phase 2/3/4 entries)
+$ git tag -l
+v0.2.0
+$ python3.13 -m venv .venv
+$ .venv/bin/pip install -e ".[dev]"
+... (succeeded; pip notice only)
+$ .venv/bin/qa --help
+... shows figurative / relationships / entity / decisions pathways
+$ .venv/bin/qa --version
+qa 0.2.0
+```
+
+### 6.2 Publications script smoke test (parent)
+
+```
+$ cd /Users/akatz4/Documents/ak\ fac/research/projects/entity-id-app-v2
+$ venv/bin/python publications-and-presentations/llm-qualitative-scoring-methodology/scripts/generate_tables.py --list
+models-tested
+cross-model-summary
+scale-effects
+prompt-effects
+temperature-reliability
+quantization-per-variant
+quantization-pairwise
+quantization-runs-sanity
+```
+
+Script resolved `QA_OUTPUT` to `scoring-experiment-output/`, found data,
+listed available tables. End-to-end path resolution confirmed.
+
+### 6.3 Auto-memory update
+
+Stale memory entries updated in
+`/Users/akatz4/.claude/projects/-Users-akatz4-Documents-ak-fac-research-projects-entity-id-app-v2/memory/MEMORY.md`:
+
+- "Virtual Environment" entry: now points at the new repo's
+  `.venv/` instead of the moved `.venv-qa-pkg/`; also notes the
+  broken parent `venv/bin/pip` (use `python -m pip` instead).
+- "Audit (2026-02-07)" entry: notes the audit docs are now in the
+  new repo at the same relative path.
+
+Also added: `project_qa_package_repos.md` documenting the canonical
+`qualitative-analysis/` repo plus the abandoned `v0/`/`v1/` siblings.
+
+---
+
+## Final state
+
+| Repo | Status |
+|---|---|
+| **`andrewskatz/qualitative-analysis`** (new, private) | Live at `v0.2.0`; 27 commits + this planning commit; tests green; CLI working |
+| **`andrewskatz/entity-id-app-v2`** (parent) | 253 files / 67 k lines removed; depends on new package via pinned pip install; publications scripts updated to read from `scoring-experiment-output/`; safety bundle at `~/qa-extraction-safety.bundle` |
+| **Local-only safety folders** | `entity-id-app-v2/_deprecated_qa_fork_20260526/` (gitignored, ~64 k items, recoverable until user deletes) |
+
+Extraction complete. Both repos pushed; no outstanding work.
