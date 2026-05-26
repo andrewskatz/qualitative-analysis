@@ -8,7 +8,6 @@ from typing import Optional, Type
 from pydantic import BaseModel
 from qualitative_analysis.core.llm import BaseLLMProvider
 from qualitative_analysis.figurative.detector import FigurativeDetector
-from qualitative_analysis.figurative.components.scanner import InstanceModel
 
 class MockLLM(BaseLLMProvider):
     def __init__(self):
@@ -24,16 +23,21 @@ class MockLLM(BaseLLMProvider):
         return '{"summary_points": ["Fallback summary point"]}'
 
     async def generate_json(self, prompt: str, schema: Type[BaseModel], **kwargs) -> BaseModel:
-        # Construct the class instance expected by the scanner
-        # schema here is ExtractionResponse class
-        return schema(instances=[
-            InstanceModel(
-                text="time is a thief",
-                type="metaphor",
+        if "has_figurative" in schema.model_fields:
+            return schema(
+                has_figurative=True,
                 confidence=0.9,
-                explanation="Time steals moments",
-                context_dependent=False
+                reasoning="Clear metaphor.",
             )
+
+        return schema(instances=[
+            {
+                "text": "time is a thief",
+                "type": "metaphor",
+                "confidence": 0.9,
+                "explanation": "Time steals moments",
+                "context_dependent": False,
+            }
         ])
 
 class TestFigurativePipeline(unittest.TestCase):

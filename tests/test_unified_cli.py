@@ -4,9 +4,29 @@ CLI integration tests for the unified qa command.
 These tests verify the CLI structure, help output, and aliases work correctly.
 """
 
+import os
 import subprocess
 import sys
 import unittest
+from pathlib import Path
+
+
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+
+
+def _run_qa_command(*args: str) -> subprocess.CompletedProcess:
+    """Run the qa module with the package src directory on PYTHONPATH."""
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{SRC_DIR}{os.pathsep}{existing}" if existing else str(SRC_DIR)
+    )
+    return subprocess.run(
+        [sys.executable, "-m", "qualitative_analysis.unified_cli", *args],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
 
 
 class TestQAHelpOutput(unittest.TestCase):
@@ -14,11 +34,7 @@ class TestQAHelpOutput(unittest.TestCase):
 
     def _run_qa(self, *args: str) -> subprocess.CompletedProcess:
         """Run the qa command with given arguments."""
-        return subprocess.run(
-            [sys.executable, "-m", "qualitative_analysis.unified_cli", *args],
-            capture_output=True,
-            text=True,
-        )
+        return _run_qa_command(*args)
 
     def test_qa_help(self):
         """Test that qa --help shows analysis types."""
@@ -72,6 +88,9 @@ class TestQAHelpOutput(unittest.TestCase):
         self.assertIn("--model", result.stdout)
         self.assertIn("--log-llm", result.stdout)
         self.assertIn("--window-size", result.stdout)
+        self.assertIn("alignment_status", result.stdout)
+        self.assertIn("supporting_window_indices", result.stdout)
+        self.assertIn("window-local", result.stdout)
 
     def test_qa_figurative_detect_checkpoint_args(self):
         """Test that qa figurative detect --help shows checkpoint arguments."""
@@ -87,6 +106,8 @@ class TestQAHelpOutput(unittest.TestCase):
         self.assertIn("input_csv", result.stdout)
         self.assertIn("--multi-level", result.stdout)
         self.assertIn("--model", result.stdout)
+        self.assertIn("does not require", result.stdout)
+        self.assertIn("instance_text", result.stdout)
 
     def test_qa_figurative_normalize_help(self):
         """Test that qa figurative normalize --help shows arguments."""
@@ -113,17 +134,23 @@ class TestQAHelpOutput(unittest.TestCase):
         self.assertIn("--strategy", result.stdout)
         self.assertIn("--coref", result.stdout)
 
+    def test_qa_entity_detect_help(self):
+        """Test that qa entity detect --help shows key arguments."""
+        result = self._run_qa("entity", "detect", "--help")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("input_csv", result.stdout)
+        self.assertIn("--text-col", result.stdout)
+        self.assertIn("--group-col", result.stdout)
+        self.assertIn("--enable-thinking", result.stdout)
+        self.assertIn("--response-format", result.stdout)
+
 
 class TestCommonArguments(unittest.TestCase):
     """Test that common arguments are consistent across commands."""
 
     def _run_qa(self, *args: str) -> subprocess.CompletedProcess:
         """Run the qa command with given arguments."""
-        return subprocess.run(
-            [sys.executable, "-m", "qualitative_analysis.unified_cli", *args],
-            capture_output=True,
-            text=True,
-        )
+        return _run_qa_command(*args)
 
     def test_model_arg_in_detect_commands(self):
         """Test that --model is present in all detect commands."""

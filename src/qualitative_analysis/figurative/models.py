@@ -10,12 +10,18 @@ from ..core.types import TextSpan
 class Instance(TextSpan):
     """
     Represents a single figurative language instance.
+
+    `start_char` and `end_char` are optional window-local offsets within the
+    representative `window_text` when deterministic alignment succeeds.
     """
     type: str = "unknown"
     confidence: float = 0.0
     explanation: str = ""
     context_dependent: bool = False
     window_index: int = 0
+    alignment_status: str = "missing"
+    support_count: int = 1
+    supporting_window_indices: List[int] = field(default_factory=list)
 
 @dataclass
 class Summary:

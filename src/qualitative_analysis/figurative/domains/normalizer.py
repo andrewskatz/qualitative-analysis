@@ -5,6 +5,7 @@ Uses sentence embeddings and agglomerative clustering to group
 semantically similar domain labels.
 """
 
+import asyncio
 import json
 import logging
 from collections import defaultdict
@@ -114,43 +115,148 @@ class DomainNormalizer:
         Returns:
             NormalizationResult with mappings and clusters
         """
-        # Determine threshold
-        if conservativeness == "custom":
-            if similarity_threshold is None:
-                raise ValueError("similarity_threshold required when conservativeness='custom'")
-            threshold = similarity_threshold
+        if canonical_method == "llm":
+            if not llm_model:
+                raise ValueError("llm_model required when canonical_method='llm'")
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return asyncio.run(
+                    self.normalize_async(
+                        instances,
+                        conservativeness=conservativeness,
+                        similarity_threshold=similarity_threshold,
+                        cluster_mode=cluster_mode,
+                        canonical_method=canonical_method,
+                        abstraction_level=abstraction_level,
+                        llm_model=llm_model,
+                        llm_provider=llm_provider,
+                        llm_config=llm_config,
+                        checkpoint_path=checkpoint_path,
+                        checkpoint_interval=checkpoint_interval,
+                    )
+                )
+            raise RuntimeError(
+                "DomainNormalizer.normalize(..., canonical_method='llm') cannot be called "
+                "from an active event loop; use 'await DomainNormalizer.normalize_async(...)' instead."
+            )
+
+        threshold, source_counts, target_counts, embedding_model, source_clusters, target_clusters = (
+            self._prepare_normalization(
+                instances,
+                conservativeness,
+                similarity_threshold,
+                cluster_mode,
+                abstraction_level,
+                canonical_method,
+            )
+        )
+        source_clusters, target_clusters = self._generate_representative_canonical_labels(
+            source_clusters,
+            target_clusters,
+            embedding_model,
+        )
+        return self._build_normalization_result(
+            source_counts,
+            target_counts,
+            source_clusters,
+            target_clusters,
+            conservativeness,
+            threshold,
+            cluster_mode,
+            canonical_method,
+            abstraction_level,
+        )
+
+    async def normalize_async(
+        self,
+        instances: List[DomainMappedInstance],
+        conservativeness: str = "moderate",
+        similarity_threshold: Optional[float] = None,
+        cluster_mode: str = "separate",
+        canonical_method: str = "representative",
+        abstraction_level: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_provider: Optional[str] = None,
+        llm_config: Optional[Dict[str, Any]] = None,
+        checkpoint_path: Optional[Path] = None,
+        checkpoint_interval: int = 10,
+    ) -> NormalizationResult:
+        """Async normalization entry point for event-loop-safe LLM canonicalization."""
+        threshold, source_counts, target_counts, embedding_model, source_clusters, target_clusters = (
+            self._prepare_normalization(
+                instances,
+                conservativeness,
+                similarity_threshold,
+                cluster_mode,
+                abstraction_level,
+                canonical_method,
+            )
+        )
+
+        if canonical_method == "llm":
+            if not llm_model:
+                raise ValueError("llm_model required when canonical_method='llm'")
+            source_clusters, target_clusters = await self._generate_canonical_labels_llm_with_checkpoint(
+                source_clusters,
+                target_clusters,
+                llm_model,
+                llm_provider or "ollama",
+                llm_config or {},
+                checkpoint_path,
+                checkpoint_interval,
+            )
         else:
-            threshold = THRESHOLD_MAP.get(conservativeness, 0.75)
-        
-        logger.info(f"Starting normalization: threshold={threshold}, mode={cluster_mode}, method={canonical_method}")
-        
-        # Extract unique domains with counts
+            source_clusters, target_clusters = self._generate_representative_canonical_labels(
+                source_clusters,
+                target_clusters,
+                embedding_model,
+            )
+
+        return self._build_normalization_result(
+            source_counts,
+            target_counts,
+            source_clusters,
+            target_clusters,
+            conservativeness,
+            threshold,
+            cluster_mode,
+            canonical_method,
+            abstraction_level,
+        )
+
+    def _prepare_normalization(
+        self,
+        instances: List[DomainMappedInstance],
+        conservativeness: str,
+        similarity_threshold: Optional[float],
+        cluster_mode: str,
+        abstraction_level: Optional[str],
+        canonical_method: str,
+    ) -> tuple:
+        """Prepare counts, embeddings, and clusters for normalization."""
+        threshold = self._resolve_threshold(conservativeness, similarity_threshold)
+        logger.info(
+            f"Starting normalization: threshold={threshold}, mode={cluster_mode}, method={canonical_method}"
+        )
+
         source_counts: Dict[str, int] = defaultdict(int)
         target_counts: Dict[str, int] = defaultdict(int)
-        
         for inst in instances:
-            # Get domain at selected abstraction level
-            source_domain = self._get_domain_at_level(
-                inst, "source", abstraction_level
-            )
-            target_domain = self._get_domain_at_level(
-                inst, "target", abstraction_level
-            )
-            
+            source_domain = self._get_domain_at_level(inst, "source", abstraction_level)
+            target_domain = self._get_domain_at_level(inst, "target", abstraction_level)
             if source_domain:
                 source_counts[source_domain] += 1
             if target_domain:
                 target_counts[target_domain] += 1
-        
+
         source_domains = list(source_counts.keys())
         target_domains = list(target_counts.keys())
-        
-        logger.info(f"Found {len(source_domains)} unique source domains, {len(target_domains)} unique target domains")
-        
-        # Get embedding model
+        logger.info(
+            f"Found {len(source_domains)} unique source domains, {len(target_domains)} unique target domains"
+        )
+
         embedding_model = self._get_embedding_model()
-        
-        # Cluster domains
         if cluster_mode == "together":
             all_domains = list(set(source_domains + target_domains))
             clusters = self._cluster_domains(all_domains, threshold, embedding_model)
@@ -159,49 +265,71 @@ class DomainNormalizer:
         else:
             source_clusters = self._cluster_domains(source_domains, threshold, embedding_model)
             target_clusters = self._cluster_domains(target_domains, threshold, embedding_model)
-        
-        # Generate canonical labels
-        if canonical_method == "llm":
-            if not llm_model:
-                raise ValueError("llm_model required when canonical_method='llm'")
-            import asyncio
-            source_clusters, target_clusters = asyncio.get_event_loop().run_until_complete(
-                self._generate_canonical_labels_llm_with_checkpoint(
-                    source_clusters,
-                    target_clusters,
-                    llm_model,
-                    llm_provider or "ollama",
-                    llm_config or {},
-                    checkpoint_path,
-                    checkpoint_interval,
-                )
-            )
-        else:
-            source_clusters = self._generate_canonical_labels_representative(
-                source_clusters, embedding_model
-            )
-            target_clusters = self._generate_canonical_labels_representative(
-                target_clusters, embedding_model
-            )
-        
-        # Add counts to clusters
+
+        return (
+            threshold,
+            source_counts,
+            target_counts,
+            embedding_model,
+            source_clusters,
+            target_clusters,
+        )
+
+    def _resolve_threshold(
+        self,
+        conservativeness: str,
+        similarity_threshold: Optional[float],
+    ) -> float:
+        """Resolve a threshold value from preset or custom settings."""
+        if conservativeness == "custom":
+            if similarity_threshold is None:
+                raise ValueError("similarity_threshold required when conservativeness='custom'")
+            return similarity_threshold
+        return THRESHOLD_MAP.get(conservativeness, 0.75)
+
+    def _generate_representative_canonical_labels(
+        self,
+        source_clusters: List[DomainCluster],
+        target_clusters: List[DomainCluster],
+        embedding_model,
+    ) -> tuple[List[DomainCluster], List[DomainCluster]]:
+        """Generate representative canonical labels for source and target clusters."""
+        source_clusters = self._generate_canonical_labels_representative(
+            source_clusters, embedding_model
+        )
+        target_clusters = self._generate_canonical_labels_representative(
+            target_clusters, embedding_model
+        )
+        return source_clusters, target_clusters
+
+    def _build_normalization_result(
+        self,
+        source_counts: Dict[str, int],
+        target_counts: Dict[str, int],
+        source_clusters: List[DomainCluster],
+        target_clusters: List[DomainCluster],
+        conservativeness: str,
+        threshold: float,
+        cluster_mode: str,
+        canonical_method: str,
+        abstraction_level: Optional[str],
+    ) -> NormalizationResult:
+        """Finalize normalization result after canonical labels are assigned."""
         for cluster in source_clusters:
-            cluster.count = sum(source_counts.get(m, 0) for m in cluster.members)
+            cluster.count = sum(source_counts.get(member, 0) for member in cluster.members)
         for cluster in target_clusters:
-            cluster.count = sum(target_counts.get(m, 0) for m in cluster.members)
-        
-        # Build mappings
+            cluster.count = sum(target_counts.get(member, 0) for member in cluster.members)
+
         source_mapping = {}
         for cluster in source_clusters:
             for member in cluster.members:
                 source_mapping[member] = cluster.canonical
-        
+
         target_mapping = {}
         for cluster in target_clusters:
             for member in cluster.members:
                 target_mapping[member] = cluster.canonical
-        
-        # Build config
+
         config = {
             "conservativeness": conservativeness,
             "similarity_threshold": threshold,
@@ -210,9 +338,10 @@ class DomainNormalizer:
             "abstraction_level": abstraction_level,
             "embedding_model": self.embedding_model_name,
         }
-        
-        logger.info(f"Normalization complete: {len(source_clusters)} source clusters, {len(target_clusters)} target clusters")
-        
+
+        logger.info(
+            f"Normalization complete: {len(source_clusters)} source clusters, {len(target_clusters)} target clusters"
+        )
         return NormalizationResult(
             source_mapping=source_mapping,
             target_mapping=target_mapping,

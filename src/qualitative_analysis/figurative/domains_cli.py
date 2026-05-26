@@ -41,7 +41,7 @@ def add_map_args(parser: argparse.ArgumentParser) -> None:
     """Add domain mapping arguments to a parser."""
     parser.add_argument(
         "input_csv",
-        help="Path to CSV file containing figurative instances.",
+        help="Path to CSV file containing figurative instances (for example, detector instances CSV).",
     )
     parser.add_argument(
         "--output", "-o",
@@ -51,7 +51,7 @@ def add_map_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--text-col",
         default="text",
-        help="Column name for figurative text (default: text)",
+        help="Column name for figurative text (default: text; auto-detects instance_text)",
     )
     parser.add_argument(
         "--type-col",
@@ -61,12 +61,12 @@ def add_map_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--window-col",
         default=None,
-        help="Column name for window context (optional)",
+        help="Column name for window context (optional; auto-detects window_text from detector CSV)",
     )
     parser.add_argument(
         "--id-col",
         default=None,
-        help="Column name for text ID (optional)",
+        help="Column name for text ID (optional; auto-detects text_id from detector CSV)",
     )
     parser.add_argument(
         "--multi-level",

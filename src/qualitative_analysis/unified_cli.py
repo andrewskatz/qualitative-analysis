@@ -101,7 +101,12 @@ def _add_figurative_commands(
     detect_parser = fig_subs.add_parser(
         "detect",
         help="Detect figurative language in text",
-        description="Analyze CSV text data to identify metaphors, analogies, and other figurative language.",
+        description=(
+            "Analyze CSV text data to identify metaphors, analogies, and other figurative "
+            "language. The instances CSV contains canonical rows with representative "
+            "window_text, optional window-local deterministic offsets, and provenance "
+            "fields alignment_status, support_count, and supporting_window_indices."
+        ),
     )
     add_figurative_detect_args(detect_parser)
     detect_parser.set_defaults(func=lambda args: asyncio.run(run_figurative_detect(args)))
@@ -110,7 +115,11 @@ def _add_figurative_commands(
     map_parser = fig_subs.add_parser(
         "map",
         help="Map source/target domains from figurative instances",
-        description="Extract conceptual domains from detected figurative language instances.",
+        description=(
+            "Extract conceptual domains from detected figurative language instances. "
+            "Works directly on detector instances CSV output and does not require "
+            "start_char/end_char offsets."
+        ),
     )
     add_map_args(map_parser)
     map_parser.set_defaults(func=lambda args: asyncio.run(run_map(args)))

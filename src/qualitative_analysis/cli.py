@@ -48,13 +48,27 @@ def add_figurative_detect_args(parser: argparse.ArgumentParser) -> None:
     This is used by both the standalone CLI and the unified CLI.
     """
     parser.add_argument("input_csv", help="Path to input CSV file.")
-    parser.add_argument("--id-col", default=None, help="Column name for IDs (optional).")
-    parser.add_argument("--text-col", default="text", help="Column name for text.")
+    parser.add_argument(
+        "--id-col",
+        default=None,
+        help="Column name for source text IDs (optional; exported as text_id in outputs).",
+    )
+    parser.add_argument(
+        "--text-col",
+        default="text",
+        help="Column name for source text (default: text).",
+    )
     parser.add_argument(
         "--output",
         default="summary",
         choices=sorted(OUTPUT_CHOICES),
-        help="Output format: summary, instances, windows, combinations, or all.",
+        help=(
+            "Output CSVs to write: summary, instances, windows, combinations, or all. "
+            "The instances CSV contains canonical figurative rows with representative "
+            "window_text, optional window-local start_char/end_char when deterministic "
+            "alignment succeeds, and provenance fields alignment_status, support_count, "
+            "and supporting_window_indices."
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -124,7 +138,12 @@ def add_figurative_detect_args(parser: argparse.ArgumentParser) -> None:
 def _parse_args() -> argparse.Namespace:
     """Parse CLI arguments (for standalone usage)."""
     parser = argparse.ArgumentParser(
-        description="Run figurative language detection on a CSV file."
+        description=(
+            "Run figurative language detection on a CSV file. Instances output uses "
+            "representative window_text, emits start_char/end_char only as window-local "
+            "deterministic offsets, and includes provenance fields alignment_status, "
+            "support_count, and supporting_window_indices."
+        )
     )
     add_figurative_detect_args(parser)
     return parser.parse_args()
@@ -153,6 +172,47 @@ def _writer_append(path: Path, fieldnames: list[str]) -> tuple[csv.DictWriter, A
     handle = path.open("a", newline="", encoding="utf-8")
     writer = csv.DictWriter(handle, fieldnames=fieldnames)
     return writer, handle
+
+
+def _instances_fieldnames() -> list[str]:
+    """Fieldnames for figurative instance CSV export."""
+    return [
+        "text_id", "window_index", "window_text", "instance_text",
+        "type", "confidence", "explanation", "context_dependent",
+        "start_char", "end_char", "alignment_status", "support_count",
+        "supporting_window_indices",
+    ]
+
+
+def _serialize_csv_list(value: Any) -> str:
+    """Serialize a list-like value for a single CSV field."""
+    if value in (None, ""):
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        return json.dumps(list(value))
+    return json.dumps([value])
+
+
+def _instance_row(text_id: str, instance: Any, window_texts: Dict[int, str]) -> Dict[str, Any]:
+    """Build one figurative instance CSV row."""
+    window_index = getattr(instance, "window_index", 0)
+    return {
+        "text_id": text_id,
+        "window_index": window_index,
+        "window_text": window_texts.get(window_index, ""),
+        "instance_text": getattr(instance, "text", ""),
+        "type": getattr(instance, "type", ""),
+        "confidence": getattr(instance, "confidence", ""),
+        "explanation": getattr(instance, "explanation", ""),
+        "context_dependent": getattr(instance, "context_dependent", ""),
+        "start_char": getattr(instance, "start_char", ""),
+        "end_char": getattr(instance, "end_char", ""),
+        "alignment_status": getattr(instance, "alignment_status", ""),
+        "support_count": getattr(instance, "support_count", ""),
+        "supporting_window_indices": _serialize_csv_list(
+            getattr(instance, "supporting_window_indices", "")
+        ),
+    }
 
 
 def _load_checkpoint(path: Path) -> Optional[DetectionCheckpoint]:
@@ -279,7 +339,7 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
         stride=stride,
         chunk_unit=args.chunk_unit,
         tokenizer_name=args.tokenizer,
-        return_windows=write_windows,
+        return_windows=(write_instances or write_windows),
         figurative_types=figurative_types,
         summary_buffer_size=args.context_window,
     )
@@ -296,11 +356,7 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
         "text_id", "text", "contains_figurative", "confidence",
         "instance_count", "window_count", "strategy", "error",
     ]
-    instances_fieldnames = [
-        "text_id", "window_index", "window_text", "instance_text",
-        "type", "confidence", "explanation", "context_dependent",
-        "start_char", "end_char",
-    ]
+    instances_fieldnames = _instances_fieldnames()
     windows_fieldnames = [
         "text_id", "window_index", "window_text", "has_figurative",
         "confidence", "instances_count", "summary",
@@ -406,21 +462,7 @@ async def run_figurative_detect(args: argparse.Namespace) -> int:
                             window_texts[w_idx] = window.get("window_text", "")
                     
                     for instance in result.instances:
-                        w_idx = getattr(instance, "window_index", 0)
-                        instances_writer.writerow(
-                            {
-                                "text_id": text_id,
-                                "window_index": w_idx,
-                                "window_text": window_texts.get(w_idx, ""),
-                                "instance_text": getattr(instance, "text", ""),
-                                "type": getattr(instance, "type", ""),
-                                "confidence": getattr(instance, "confidence", ""),
-                                "explanation": getattr(instance, "explanation", ""),
-                                "context_dependent": getattr(instance, "context_dependent", ""),
-                                "start_char": getattr(instance, "start_char", ""),
-                                "end_char": getattr(instance, "end_char", ""),
-                            }
-                        )
+                        instances_writer.writerow(_instance_row(text_id, instance, window_texts))
 
                 if result and write_windows and windows_writer:
                     for window in result.metadata.get("windows", []):
