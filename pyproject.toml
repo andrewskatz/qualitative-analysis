@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-analysis"
-version = "0.1.0"
-description = "A modular suite for qualitative data analysis using LLMs"
+version = "0.2.0"
+description = "A modular Python toolkit for qualitative data analysis using LLMs (figurative, relationships, entity, decisions pathways)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Project Team", email = "team@example.com"}
+    {name = "Andrew Katz", email = "akatz@tabbiresearch.com"}
 ]
 dependencies = [
     "pydantic>=2.0.0",
