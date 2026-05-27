@@ -1,0 +1,631 @@
+id,text,has_figurative_language,figurative_type,difficulty,instance_count,category,subcategory,pattern,notes,dataset_name,dataset_category
+1,The cat is as big as a house.,True,simile,easy,1,,,,,easy,original
+2,She sings like an angel.,True,simile,easy,1,,,,,easy,original
+3,He is the apple of my eye.,True,metaphor,easy,1,,,,,easy,original
+4,The wind whispered secrets.,True,personification,easy,1,,,,,easy,original
+5,You are my sunshine.,True,metaphor,easy,1,,,,,easy,original
+6,The world is your oyster.,True,metaphor,easy,1,,,,,easy,original
+7,He is a diamond in the rough.,True,metaphor,easy,1,,,,,easy,original
+8,She is a ray of sunshine.,True,metaphor,easy,1,,,,,easy,original
+9,The stars are diamonds in the sky.,True,metaphor,easy,1,,,,,easy,original
+10,You are the salt of the earth.,True,metaphor,easy,1,,,,,easy,original
+11,Time is a thief.,True,personification,easy,1,,,,,easy,original
+12,Her eyes were pools of blue.,True,metaphor,easy,1,,,,,easy,original
+13,Life is a journey.,True,metaphor,easy,1,,,,,easy,original
+14,His heart is made of stone.,True,metaphor,easy,1,,,,,easy,original
+15,The classroom was a zoo.,True,metaphor,easy,1,,,,,easy,original
+16,She has a heart of gold.,True,metaphor,easy,1,,,,,easy,original
+17,The news hit him like a truck.,True,simile,easy,1,,,,,easy,original
+18,Ideas were bubbling in her mind.,True,metaphor,easy,1,,,,,easy,original
+19,The computer died in the middle of my work.,True,personification,easy,1,,,,,easy,original
+20,Their words were daggers to my heart.,True,metaphor,easy,1,,,,,easy,original
+21,The autumn leaves danced in the wind.,True,personification,easy,1,,,,,easy,original
+22,Success is a ladder that cannot be climbed with your hands in your pockets.,True,metaphor,easy,1,,,,,easy,original
+23,The stars winked at us from the night sky.,True,personification,easy,1,,,,,easy,original
+24,Her laughter is music to my ears.,True,metaphor,easy,1,,,,,easy,original
+25,The city sleeps under a blanket of fog.,True,personification,easy,1,,,,,easy,original
+26,He swims like a fish.,True,simile,easy,1,,,,,easy,original
+27,Knowledge is a treasure that follows its owner everywhere.,True,metaphor,easy,1,,,,,easy,original
+28,The moon smiled down on the peaceful town.,True,personification,easy,1,,,,,easy,original
+29,Fear is a beast that feeds on your insecurities.,True,metaphor,easy,1,,,,,easy,original
+30,The flowers nodded their heads in the gentle breeze.,True,personification,easy,1,,,,,easy,original
+1,The economy is a roller coaster of unpredictable highs and lows.,True,metaphor,medium,1,,,,,medium,original
+2,Her argument was as fragile as a house of cards.,True,simile,medium,1,,,,,medium,original
+3,The shadow of doubt crept into his mind.,True,personification,medium,1,,,,,medium,original
+4,Democracy is a delicate flower that requires constant nurturing.,True,metaphor,medium,1,,,,,medium,original
+5,The painting tells the story of a forgotten era.,True,personification,medium,1,,,,,medium,original
+6,The professor's lecture was a meandering river with no clear destination.,True,metaphor,medium,1,,,,,medium,original
+7,The old building stood like a sentinel watching over the city.,True,simile,medium,1,,,,,medium,original
+8,Anxiety feeds on uncertainty and grows stronger in silence.,True,personification,medium,1,,,,,medium,original
+9,The legal system is a labyrinth of complex procedures and obscure rules.,True,metaphor,medium,1,,,,,medium,original
+10,The algorithm hunts through data looking for patterns to exploit.,True,personification,medium,1,,,,,medium,original
+11,His career has been a marathon rather than a sprint.,True,metaphor,medium,1,,,,,medium,original
+12,The forest breathed a sigh of relief as the rain finally arrived.,True,personification,medium,1,,,,,medium,original
+13,The theory collapsed under the weight of new evidence.,True,metaphor,medium,1,,,,,medium,original
+14,The camera captures memories and preserves them in digital amber.,True,metaphor,medium,1,,,,,medium,original
+15,The deadline loomed over her like a storm cloud ready to burst.,True,simile,medium,1,,,,,medium,original
+16,The book sits on the shelf collecting dust and forgotten promises.,True,personification,medium,1,,,,,medium,original
+17,The statistics paint a troubling picture of economic inequality.,True,metaphor,medium,1,,,,,medium,original
+18,The melody danced between major and minor keys throughout the piece.,True,personification,medium,1,,,,,medium,original
+19,The bridge between their cultures was built with mutual understanding.,True,metaphor,medium,1,,,,,medium,original
+20,The code runs through the system like blood through veins.,True,simile,medium,1,,,,,medium,original
+21,The old traditions are fading echoes in the halls of modernity.,True,metaphor,medium,1,,,,,medium,original
+22,The market digested the news of the merger with surprising calm.,True,personification,medium,1,,,,,medium,original
+23,Her influence in the organization is a slowly spreading ripple.,True,metaphor,medium,1,,,,,medium,original
+24,The abandoned house whispered stories of its former inhabitants.,True,personification,medium,1,,,,,medium,original
+25,The research paper was a tapestry of interwoven ideas and evidence.,True,metaphor,medium,1,,,,,medium,original
+26,The social media platform harvests user data with algorithmic precision.,True,personification,medium,1,,,,,medium,original
+27,The policy was a shield designed to protect vulnerable communities.,True,metaphor,medium,1,,,,,medium,original
+28,The mountains stood like ancient guardians of the valley below.,True,simile,medium,1,,,,,medium,original
+29,The historical narrative weaves together disparate events into a cohesive story.,True,metaphor,medium,1,,,,,medium,original
+30,The city devours resources and spits out pollution in return.,True,personification,medium,1,,,,,medium,original
+1,The algorithm is a black box whose inner workings remain inscrutable even to its creators.,True,metaphor,hard,1,,,,,hard,original
+2,The new policy is a Trojan horse designed to introduce controversial changes under the guise of reform.,True,metaphor,hard,1,,,,,hard,original
+3,The critic's words cut deeper than Occam's razor through the pretensions of the author's work.,True,simile,hard,1,,,,,hard,original
+4,The stock market's invisible hand guides capital with the capricious nature of a child arranging toys.,True,personification,hard,1,,,,,hard,original
+5,Her argument was a house of cards built on the shifting sands of incomplete research.,True,extended metaphor,hard,1,,,,,hard,original
+6,The bureaucracy is a labyrinth designed by Kafka and maintained by Sisyphus.,True,metaphor,hard,1,,,,,hard,original
+7,The company's growth strategy is a Ponzi scheme of promises that will eventually collapse under its own weight.,True,metaphor,hard,1,,,,,hard,original
+8,The political discourse has become an echo chamber where ideas bounce around but never evolve.,True,metaphor,hard,1,,,,,hard,original
+9,The internet remembers everything with the unforgiving precision of an elephant nursing ancient grudges.,True,personification,hard,1,,,,,hard,original
+10,The data points dance across the graph like stars forming constellations of meaning only experts can interpret.,True,simile,hard,1,,,,,hard,original
+11,"The philosophical concept hangs in intellectual space like Schrödinger's cat, simultaneously alive and dead until observed.",True,simile,hard,1,,,,,hard,original
+12,The economy is a patient with multiple chronic conditions being treated by doctors with competing theories of medicine.,True,metaphor,hard,1,,,,,hard,original
+13,The social media platform harvests attention like a farmer who has discovered that anxiety and outrage are the most profitable crops.,True,simile,hard,1,,,,,hard,original
+14,"The academic paper was a palimpsest of ideas, with traces of earlier theories visible beneath the author's new contributions.",True,metaphor,hard,1,,,,,hard,original
+15,The corporation is a modern Leviathan that consumes resources and excretes externalities with mechanical indifference.,True,metaphor,hard,1,,,,,hard,original
+16,The historical narrative is a tapestry where some threads are deliberately made more visible than others.,True,metaphor,hard,1,,,,,hard,original
+17,"The legal precedent hangs over the case like Damocles' sword, threatening to fall at any moment.",True,simile,hard,1,,,,,hard,original
+18,The technology disrupts industries with the casual violence of a meteor strike altering an ecosystem.,True,simile,hard,1,,,,,hard,original
+19,"The cultural zeitgeist shifts like tectonic plates, with long periods of stability punctuated by sudden, transformative movements.",True,simile,hard,1,,,,,hard,original
+20,The algorithm feeds on data with the indiscriminate hunger of a starving artist at an all-you-can-eat buffet.,True,simile,hard,1,,,,,hard,original
+21,"The city's architecture is a conversation between generations, with each era responding to and reinterpreting what came before.",True,personification,hard,1,,,,,hard,original
+22,"The scientific theory waits patiently at the edge of acceptance, knowing that paradigms shift one funeral at a time.",True,personification,hard,1,,,,,hard,original
+23,The poem's meaning evaporates upon close reading like morning dew under scrutiny's harsh sun.,True,simile,hard,1,,,,,hard,original
+24,The financial system is a Rube Goldberg machine designed by mathematicians and operated by gamblers.,True,metaphor,hard,1,,,,,hard,original
+25,The political campaign was a chess game where the pawns believed they were choosing the moves.,True,metaphor,hard,1,,,,,hard,original
+26,The software interface is a mask that smiles reassuringly while concealing the chaos of code beneath.,True,metaphor,hard,1,,,,,hard,original
+27,The academic discipline guards its boundaries like a medieval city-state suspicious of intellectual barbarians.,True,personification,hard,1,,,,,hard,original
+28,"The novel's structure is a matryoshka doll of narratives, each containing and contextualizing the next.",True,metaphor,hard,1,,,,,hard,original
+29,The corporation's ethics policy is a paper tiger that roars impressively but lacks teeth or claws.,True,metaphor,hard,1,,,,,hard,original
+30,"The pandemic moved through society like a dye injected into the bloodstream, revealing previously invisible connections.",True,simile,hard,1,,,,,hard,original
+1,"The project was on life support. After months of setbacks, the team finally pulled the plug.",True,extended metaphor,medium,1,,,,,multi-sentence,original
+2,"John walked into the interview with confidence. He was a lion entering his territory, ready to claim what was rightfully his.",True,metaphor,medium,1,,,,,multi-sentence,original
+3,"The old library was a treasure chest of knowledge. Books lined the walls like precious gems, each one containing worlds waiting to be discovered.",True,extended metaphor,medium,1,,,,,multi-sentence,original
+4,"The news hit her hard. She stood frozen, like a statue in the town square, unable to process what she had just heard.",True,simile,medium,1,,,,,multi-sentence,original
+5,The company's stock plummeted overnight. Investors watched in horror as years of growth evaporated into thin air.,True,personification,medium,1,,,,,multi-sentence,original
+6,The garden had been neglected for years. Weeds had declared victory and now ruled over their conquered territory with thorny authority.,True,personification,medium,1,,,,,multi-sentence,original
+7,"The words hung in the air between them. Neither wanted to reach out and grab them, afraid of what might happen if they acknowledged the truth.",True,metaphor,medium,1,,,,,multi-sentence,original
+8,"The deadline approached with relentless determination. Each tick of the clock was a footstep drawing nearer, hunting her down.",True,personification,hard,1,,,,,multi-sentence,original
+9,"Memory is a fickle companion. One moment it shows you vivid scenes from your past, and the next it abandons you when you need it most.",True,personification,hard,1,,,,,multi-sentence,original
+10,"The old house creaked and groaned in the wind. It was telling stories of generations past, whispering secrets only it remembered.",True,personification,medium,1,,,,,multi-sentence,original
+11,"Her mind was a battlefield. Thoughts charged at each other with reckless abandon, casualties mounting with each passing moment of indecision.",True,extended metaphor,hard,1,,,,,multi-sentence,original
+12,"The city never truly sleeps. It merely dozes, one eye always open, watching as people move through its veins at all hours.",True,personification,hard,1,,,,,multi-sentence,original
+13,The first chapter was merely the appetizer. The author spent the rest of the book serving up a feast of ideas that left readers intellectually satisfied yet hungry for more.,True,extended metaphor,medium,1,,,,,multi-sentence,original
+14,"The negotiation was a delicate dance. Both parties circled each other cautiously, neither willing to make the first significant move until they understood their partner's rhythm.",True,metaphor,medium,1,,,,,multi-sentence,original
+15,"Depression is an unwelcome houseguest. It arrives without warning, makes itself at home, and refuses to leave no matter how unwelcome it becomes.",True,metaphor,hard,1,,,,,multi-sentence,original
+16,"The courtroom fell silent as the witness took the stand. The atmosphere was as thick as fog, making it difficult for anyone to breathe normally.",True,simile,medium,1,,,,,multi-sentence,original
+17,"The political campaign started strong but quickly lost momentum. What had begun as a mighty river was now barely a trickle, struggling to reach its destination.",True,metaphor,medium,1,,,,,multi-sentence,original
+18,"The algorithm learned from each interaction. With every piece of data it consumed, it grew smarter, more efficient, evolving beyond its original programming.",True,personification,medium,1,,,,,multi-sentence,original
+19,Social media is a double-edged sword. It connects us across vast distances while simultaneously building walls between people sitting in the same room.,True,metaphor,hard,1,,,,,multi-sentence,original
+20,"The forest welcomed them with open arms. Branches swayed in greeting, and leaves whispered secrets as they passed beneath the ancient canopy.",True,personification,medium,1,,,,,multi-sentence,original
+21,"Climate change isn't a distant threat. It's a predator already in our midst, stalking its prey with patient determination, waiting for the perfect moment to strike.",True,extended metaphor,hard,1,,,,,multi-sentence,original
+22,The symphony built slowly toward its climax. Each instrument added its voice to the conversation until they were all shouting in perfect harmony.,True,personification,medium,1,,,,,multi-sentence,original
+23,"Their relationship had weathered many storms. Now, in calmer waters, they navigated with the confidence of sailors who had seen the worst the sea could offer.",True,extended metaphor,medium,1,,,,,multi-sentence,original
+24,"Grief comes in waves. Sometimes it's a gentle ripple that you can step over, and other times it's a tsunami that knocks you off your feet and drags you under.",True,metaphor,hard,1,,,,,multi-sentence,original
+25,"The old professor was a living library. His mind contained volumes of knowledge, carefully cataloged and accessible through the simple act of asking a question.",True,metaphor,medium,1,,,,,multi-sentence,original
+26,The startup ecosystem is a jungle. New companies must adapt quickly or be devoured by larger predators that have mastered the environment through years of evolution.,True,extended metaphor,hard,1,,,,,multi-sentence,original
+27,"The painting captured more than just a scene. It imprisoned a moment in time, holding it captive for future generations to witness and experience.",True,personification,medium,1,,,,,multi-sentence,original
+28,The debate quickly turned hostile. What began as a civilized exchange of ideas transformed into a battlefield where words were weapons and facts were the first casualties.,True,extended metaphor,hard,1,,,,,multi-sentence,original
+29,The abandoned factory stood as a monument to a bygone era. Its empty halls echoed with the ghosts of machinery and the memory of busy hands that once gave it purpose.,True,personification,medium,1,,,,,multi-sentence,original
+30,"Trust is like a mirror. Once broken, you can fix it, but you'll always see the cracks in the reflection, reminders of the damage that was done.",True,simile,medium,1,,,,,multi-sentence,original
+1,The research team spent three months collecting data from various sources. They analyzed the information using statistical methods and machine learning algorithms. The results showed a clear correlation between the variables they were studying. This finding was consistent with previous studies in the field. They published their conclusions in a peer-reviewed journal and presented at an international conference.,False,none,medium,1,,,,,long-text,original
+2,"The storm raged through the night, a furious beast clawing at the windows and howling its displeasure. Lightning split the sky into jagged pieces while thunder shook the foundations of the house. The family huddled together in the living room, listening to the rain drum against the roof like an impatient visitor. By morning, the tempest had moved on, leaving behind a landscape transformed. Broken branches and scattered debris told the story of the night's battle with nature.",True,extended metaphor,medium,1,,,,,long-text,original
+3,The company announced its quarterly earnings report yesterday afternoon. Revenue increased by 12% compared to the same period last year. Operating expenses remained stable despite inflation pressures in the market. The CEO attributed the growth to new product launches and expanded market reach. Analysts predict continued positive performance for the next two quarters based on current trends.,False,none,medium,1,,,,,long-text,original
+4,"The old library sits at the corner of Maple and Oak streets. It was built in 1892 and has been renovated three times since then. The collection includes over 50,000 books across various genres and subjects. Community events are held in the basement meeting room every weekend. The staff consists of four full-time librarians and several part-time assistants.",False,none,medium,1,,,,,long-text,original
+5,"Democracy is a delicate ecosystem that requires constant maintenance to flourish. When citizens disengage from the political process, the system begins to wither at its roots. Special interests slither through the undergrowth, finding opportunities to choke out the common good. Media serves as the sunlight, essential for transparency but sometimes harsh or filtered through clouds of bias. Education is the water that nourishes new growth, ensuring future generations understand how to tend this precious garden. Without careful stewardship, even the most robust democratic institutions can be overrun by the weeds of corruption.",True,extended metaphor,hard,1,,,,,long-text,original
+6,The hiking trail extends for 7.5 miles through varied terrain. The first section passes through dense forest before opening into a meadow. Hikers will encounter a small stream that can be crossed via stepping stones. The path becomes steeper as it approaches the mountain ridge. Most people complete the entire trail in approximately four hours.,False,none,medium,1,,,,,long-text,original
+7,"Time slipped through her fingers like fine sand as she approached the deadline. Her mind was a battlefield of competing priorities, each one demanding immediate attention. The pressure mounted like a physical weight on her shoulders, making each movement feel like wading through deep water. Emails poured into her inbox in an endless flood, threatening to drown her in information. The office around her buzzed with activity, colleagues orbiting her desk like planets around a stressed sun. Somehow, despite the chaos swirling around her, she managed to find a moment of clarity to complete the project.",True,multiple metaphors,medium,1,,,,,long-text,original
+8,"The new apartment building contains 24 units of varying sizes. Each apartment features modern appliances and energy-efficient windows. The monthly rent includes water, trash service, and access to community amenities. A security system monitors all entrances and common areas throughout the day. The location provides convenient access to public transportation and local shopping centers.",False,none,medium,1,,,,,long-text,original
+9,"The historical museum opened a new exhibition on ancient civilizations last week. Artifacts from Egypt, Greece, and Rome are displayed in chronological order. Interactive displays allow visitors to learn about daily life in these societies. The exhibition was curated by Dr. James Wilson, a renowned archaeologist. Guided tours are available three times daily for those wanting additional information.",False,none,medium,1,,,,,long-text,original
+10,"The words on the page were doors to other worlds, each paragraph a key that unlocked new realms of possibility. She lost herself in the labyrinth of the narrative, following characters who became as familiar as old friends. The author's voice was a gentle hand guiding her through emotional landscapes both foreign and intimately familiar. Time became elastic, stretching and contracting according to the rhythm of the story rather than the clock on her wall. As she turned the final page, she felt like a traveler returning from a long journey, carrying souvenirs of experience that would remain with her long after the book was shelved.",True,extended metaphor,medium,1,,,,,long-text,original
+neg_001,The cat sat on the mat and cleaned its paws.,False,,easy,1,literal_description,,,Simple literal description,negative,phase1
+neg_002,The temperature dropped to 32 degrees Fahrenheit at midnight.,False,,easy,1,factual_statement,,,Factual weather statement,negative,phase1
+neg_003,She walked to the store and bought milk.,False,,easy,1,literal_description,,,Simple action description,negative,phase1
+neg_004,The book has 300 pages and a blue cover.,False,,easy,1,factual_statement,,,Physical description,negative,phase1
+neg_005,He arrived at the office at 9:00 AM.,False,,easy,1,factual_statement,,,Time statement,negative,phase1
+neg_006,The tree is 50 feet tall.,False,,easy,1,factual_statement,,,Measurement,negative,phase1
+neg_007,She wore a red dress to the party.,False,,easy,1,literal_description,,,Clothing description,negative,phase1
+neg_008,The car has four wheels and a steering wheel.,False,,easy,1,factual_statement,,,Object description,negative,phase1
+neg_009,He ate breakfast at 7:30 AM.,False,,easy,1,literal_description,,,Daily activity,negative,phase1
+neg_010,The building has ten floors.,False,,easy,1,factual_statement,,,Structural description,negative,phase1
+neg_011,She opened the door and entered the room.,False,,easy,1,literal_description,,,Action sequence,negative,phase1
+neg_012,The water boiled at 100 degrees Celsius.,False,,easy,1,factual_statement,,,Scientific fact,negative,phase1
+neg_013,He typed the email and clicked send.,False,,easy,1,literal_description,,,Computer action,negative,phase1
+neg_014,The meeting started at 2:00 PM and ended at 3:30 PM.,False,,easy,1,factual_statement,,,Time range,negative,phase1
+neg_015,She placed the book on the shelf.,False,,easy,1,literal_description,,,Physical action,negative,phase1
+neg_016,The sun rises in the east and sets in the west.,False,,easy,1,factual_statement,,,Natural phenomenon,negative,phase1
+neg_017,He turned on the light switch.,False,,easy,1,literal_description,,,Simple action,negative,phase1
+neg_018,The phone rang three times before she answered.,False,,easy,1,literal_description,,,Event sequence,negative,phase1
+neg_019,The coffee was hot when it was served.,False,,easy,1,factual_statement,,,Temperature description,negative,phase1
+neg_020,She locked the door before leaving.,False,,easy,1,literal_description,,,Security action,negative,phase1
+neg_021,The train departed from platform 5 at 6:15 PM.,False,,easy,1,factual_statement,,,Transportation schedule,negative,phase1
+neg_022,He signed the document with a pen.,False,,easy,1,literal_description,,,Action with tool,negative,phase1
+neg_023,The room measured 12 feet by 15 feet.,False,,easy,1,factual_statement,,,Spatial measurement,negative,phase1
+neg_024,She poured water into the glass.,False,,easy,1,literal_description,,,Liquid transfer,negative,phase1
+neg_025,The clock showed 11:45 AM.,False,,easy,1,factual_statement,,,Time display,negative,phase1
+neg_026,He pressed the button to start the machine.,False,,easy,1,literal_description,,,Machine operation,negative,phase1
+neg_027,The package weighed 5 pounds.,False,,easy,1,factual_statement,,,Weight measurement,negative,phase1
+neg_028,She folded the laundry and put it away.,False,,easy,1,literal_description,,,Household task,negative,phase1
+neg_029,The store opens at 9:00 AM on weekdays.,False,,easy,1,factual_statement,,,Business hours,negative,phase1
+neg_030,He walked up the stairs to the second floor.,False,,easy,1,literal_description,,,Movement description,negative,phase1
+neg_031,The chemical reaction produced carbon dioxide gas.,False,,medium,1,technical_language,,,Chemistry description,negative,phase1
+neg_032,The algorithm sorts the array in O(n log n) time complexity.,False,,medium,1,technical_language,,,Computer science,negative,phase1
+neg_033,The patient's blood pressure was 120/80 mmHg.,False,,medium,1,technical_language,,,Medical measurement,negative,phase1
+neg_034,The protein consists of 250 amino acids arranged in a specific sequence.,False,,medium,1,technical_language,,,Biochemistry,negative,phase1
+neg_035,The circuit contains three resistors connected in series.,False,,medium,1,technical_language,,,Electronics,negative,phase1
+neg_036,"The database query returned 1,247 records in 0.3 seconds.",False,,medium,1,technical_language,,,Database operation,negative,phase1
+neg_037,The telescope has a focal length of 1000mm and an aperture of 200mm.,False,,medium,1,technical_language,,,Optical specification,negative,phase1
+neg_038,"The soil sample contained 15% clay, 40% silt, and 45% sand.",False,,medium,1,technical_language,,,Geological analysis,negative,phase1
+neg_039,The function takes two parameters and returns a boolean value.,False,,medium,1,technical_language,,,Programming description,negative,phase1
+neg_040,The engine produces 300 horsepower at 6000 RPM.,False,,medium,1,technical_language,,,Mechanical specification,negative,phase1
+neg_041,The study included 500 participants aged 25 to 65 years.,False,,medium,1,technical_language,,,Research methodology,negative,phase1
+neg_042,The molecule has a molecular weight of 180.16 g/mol.,False,,medium,1,technical_language,,,Chemistry measurement,negative,phase1
+neg_043,"The server processes approximately 10,000 requests per second.",False,,medium,1,technical_language,,,System performance,negative,phase1
+neg_044,The lens has a maximum aperture of f/1.8.,False,,medium,1,technical_language,,,Photography specification,negative,phase1
+neg_045,The experiment was conducted at room temperature (25°C) and standard pressure.,False,,medium,1,technical_language,,,Experimental conditions,negative,phase1
+neg_046,The network operates on the 802.11ac wireless standard.,False,,medium,1,technical_language,,,Networking protocol,negative,phase1
+neg_047,The battery has a capacity of 5000 mAh and charges via USB-C.,False,,medium,1,technical_language,,,Electronic specification,negative,phase1
+neg_048,The statistical analysis showed a p-value of 0.03.,False,,medium,1,technical_language,,,Statistical result,negative,phase1
+neg_049,The material has a tensile strength of 500 MPa.,False,,medium,1,technical_language,,,Material property,negative,phase1
+neg_050,The satellite orbits at an altitude of 400 kilometers.,False,,medium,1,technical_language,,,Orbital mechanics,negative,phase1
+neg_051,She walked with a limp because of her injured ankle.,False,,medium,1,borderline_case,,,Literal comparison due to injury,negative,phase1
+neg_052,The old house creaked when people walked on the wooden floors.,False,,medium,1,borderline_case,,,Natural sound description,negative,phase1
+neg_053,He spoke loudly because the room was noisy.,False,,medium,1,literal_description,,,Causal explanation,negative,phase1
+neg_054,The ice melted quickly in the warm room.,False,,medium,1,literal_description,,,Physical process,negative,phase1
+neg_055,She repeated the instructions three times to ensure understanding.,False,,medium,1,literal_description,,,Communication action,negative,phase1
+neg_056,The plant grew taller after being moved to a sunnier location.,False,,medium,1,literal_description,,,Growth observation,negative,phase1
+neg_057,He practiced the piano for two hours every day.,False,,medium,1,literal_description,,,Routine activity,negative,phase1
+neg_058,The paint dried within four hours.,False,,medium,1,literal_description,,,Time-based process,negative,phase1
+neg_059,She organized the files alphabetically.,False,,medium,1,literal_description,,,Organization method,negative,phase1
+neg_060,The bread rose during baking due to the yeast.,False,,medium,1,literal_description,,,Baking process,negative,phase1
+neg_061,He adjusted the thermostat to increase the temperature.,False,,medium,1,literal_description,,,Climate control,negative,phase1
+neg_062,The fabric shrank after being washed in hot water.,False,,medium,1,literal_description,,,Material change,negative,phase1
+neg_063,She compared the two products before making a purchase.,False,,medium,1,literal_description,,,Decision process,negative,phase1
+neg_064,The battery drained after six hours of continuous use.,False,,medium,1,literal_description,,,Power depletion,negative,phase1
+neg_065,He followed the recipe exactly as written.,False,,medium,1,literal_description,,,Instruction adherence,negative,phase1
+neg_066,The traffic moved slowly during rush hour.,False,,medium,1,literal_description,,,Traffic condition,negative,phase1
+neg_067,She saved the document before closing the application.,False,,medium,1,literal_description,,,Computer procedure,negative,phase1
+neg_068,The candle burned for three hours before going out.,False,,medium,1,literal_description,,,Combustion duration,negative,phase1
+neg_069,He measured the ingredients carefully.,False,,medium,1,literal_description,,,Precision action,negative,phase1
+neg_070,The window rattled when the wind blew strongly.,False,,medium,1,borderline_case,,,Natural physical effect,negative,phase1
+neg_071,The Supreme Court ruled on the case in a 5-4 decision.,False,,medium,1,factual_statement,,,Legal outcome,negative,phase1
+neg_072,The company reported quarterly earnings of $2.3 billion.,False,,medium,1,factual_statement,,,Financial report,negative,phase1
+neg_073,The population of the city increased by 3% last year.,False,,medium,1,factual_statement,,,Demographic statistic,negative,phase1
+neg_074,The legislation passed with bipartisan support.,False,,medium,1,factual_statement,,,Political process,negative,phase1
+neg_075,The university offers 150 undergraduate degree programs.,False,,medium,1,factual_statement,,,Educational information,negative,phase1
+neg_076,"The bridge spans 2,000 feet across the river.",False,,medium,1,factual_statement,,,Infrastructure measurement,negative,phase1
+neg_077,"The museum houses a collection of 5,000 artifacts.",False,,medium,1,factual_statement,,,Collection size,negative,phase1
+neg_078,The treaty was signed by representatives from 25 countries.,False,,medium,1,factual_statement,,,International agreement,negative,phase1
+neg_079,"The festival attracts approximately 50,000 visitors annually.",False,,medium,1,factual_statement,,,Event attendance,negative,phase1
+neg_080,The project was completed two weeks ahead of schedule.,False,,medium,1,factual_statement,,,Timeline achievement,negative,phase1
+neg_081,The theorem states that the sum of angles in a triangle equals 180 degrees.,False,,hard,1,technical_language,,,Mathematical principle,negative,phase1
+neg_082,The quantum state collapses upon measurement according to the Copenhagen interpretation.,False,,hard,1,technical_language,,,Physics theory,negative,phase1
+neg_083,The phylogenetic analysis revealed a monophyletic clade with strong bootstrap support.,False,,hard,1,technical_language,,,Evolutionary biology,negative,phase1
+neg_084,The hermeneutic approach emphasizes the importance of context in textual interpretation.,False,,hard,1,technical_language,,,Literary theory,negative,phase1
+neg_085,The epistemological framework distinguishes between a priori and a posteriori knowledge.,False,,hard,1,technical_language,,,Philosophy,negative,phase1
+neg_086,The econometric model accounts for heteroskedasticity using robust standard errors.,False,,hard,1,technical_language,,,Economics methodology,negative,phase1
+neg_087,The archaeological evidence suggests continuous occupation from the Neolithic period.,False,,hard,1,technical_language,,,Historical analysis,negative,phase1
+neg_088,The neurological examination revealed decreased proprioception in the lower extremities.,False,,hard,1,technical_language,,,Medical diagnosis,negative,phase1
+neg_089,The syntactic structure exhibits left-branching with multiple embedded clauses.,False,,hard,1,technical_language,,,Linguistics,negative,phase1
+neg_090,The thermodynamic process is reversible under ideal conditions.,False,,hard,1,technical_language,,,Physics principle,negative,phase1
+neg_091,The jurisprudential debate centers on the tension between legal positivism and natural law theory.,False,,hard,1,technical_language,,,Legal philosophy,negative,phase1
+neg_092,The paleontological record shows a mass extinction event at the Cretaceous-Paleogene boundary.,False,,hard,1,technical_language,,,Geological history,negative,phase1
+neg_093,The immunological response involves both humoral and cell-mediated mechanisms.,False,,hard,1,technical_language,,,Immunology,negative,phase1
+neg_094,The sociological analysis employs a structural-functionalist perspective.,False,,hard,1,technical_language,,,Social theory,negative,phase1
+neg_095,The cryptographic protocol ensures confidentiality through asymmetric encryption.,False,,hard,1,technical_language,,,Computer security,negative,phase1
+neg_096,The phenomenological method involves bracketing presuppositions to examine lived experience.,False,,hard,1,technical_language,,,Philosophy methodology,negative,phase1
+neg_097,The geopolitical situation reflects the multipolar distribution of power among nation-states.,False,,hard,1,technical_language,,,International relations,negative,phase1
+neg_098,The ontological argument attempts to prove existence through conceptual analysis alone.,False,,hard,1,technical_language,,,Philosophy argument,negative,phase1
+neg_099,The morphological features include agglutinative affixation and vowel harmony.,False,,hard,1,technical_language,,,Linguistics description,negative,phase1
+neg_100,The astrophysical observations confirm the presence of dark matter through gravitational lensing.,False,,hard,1,technical_language,,,Astronomy finding,negative,phase1
+neg_101,The committee reviewed the proposal and voted to approve it.,False,,medium,1,literal_description,,,Organizational process,negative,phase1
+neg_102,The software update fixed several bugs and improved performance.,False,,medium,1,literal_description,,,Technical improvement,negative,phase1
+neg_103,"The survey collected responses from 1,000 participants over three weeks.",False,,medium,1,literal_description,,,Research data collection,negative,phase1
+neg_104,"The construction project required 500 tons of steel and 2,000 cubic yards of concrete.",False,,medium,1,factual_statement,,,Construction materials,negative,phase1
+neg_105,The athlete completed the marathon in 3 hours and 45 minutes.,False,,medium,1,factual_statement,,,Performance time,negative,phase1
+neg_106,The restaurant serves lunch from 11:30 AM to 2:30 PM daily.,False,,easy,1,factual_statement,,,Service hours,negative,phase1
+neg_107,The medication should be taken twice daily with food.,False,,medium,1,factual_statement,,,Medical instruction,negative,phase1
+neg_108,The flight was delayed by 90 minutes due to weather conditions.,False,,medium,1,factual_statement,,,Travel disruption,negative,phase1
+neg_109,"The garden contains roses, tulips, and daisies.",False,,easy,1,literal_description,,,Plant inventory,negative,phase1
+neg_110,The presentation lasted 45 minutes and included 30 slides.,False,,medium,1,factual_statement,,,Presentation details,negative,phase1
+neg_111,"The recipe requires three eggs, two cups of flour, and one cup of sugar.",False,,easy,1,factual_statement,,,Recipe ingredients,negative,phase1
+neg_112,The library is open Monday through Friday from 8 AM to 8 PM.,False,,easy,1,factual_statement,,,Operating hours,negative,phase1
+neg_113,The exam consists of 50 multiple-choice questions and two essay questions.,False,,medium,1,factual_statement,,,Test format,negative,phase1
+neg_114,The parking lot has spaces for 200 vehicles.,False,,easy,1,factual_statement,,,Capacity information,negative,phase1
+neg_115,The concert tickets cost $75 for general admission and $150 for VIP seating.,False,,medium,1,factual_statement,,,Pricing information,negative,phase1
+neg_116,The course meets twice weekly on Tuesdays and Thursdays.,False,,easy,1,factual_statement,,,Schedule information,negative,phase1
+neg_117,The warranty covers defects in materials and workmanship for one year.,False,,medium,1,factual_statement,,,Warranty terms,negative,phase1
+neg_118,"The apartment has two bedrooms, one bathroom, and a kitchen.",False,,easy,1,literal_description,,,Property description,negative,phase1
+neg_119,The conference will be held from June 15 to June 18 in Chicago.,False,,medium,1,factual_statement,,,Event details,negative,phase1
+neg_120,The subscription costs $9.99 per month or $99 per year.,False,,medium,1,factual_statement,,,Pricing options,negative,phase1
+neg_121,The judge considered the evidence before making a ruling.,False,,medium,1,literal_description,,,Legal process,negative,phase1
+neg_122,The teacher explained the concept using examples from the textbook.,False,,medium,1,literal_description,,,Educational method,negative,phase1
+neg_123,The mechanic replaced the brake pads and rotated the tires.,False,,medium,1,literal_description,,,Maintenance work,negative,phase1
+neg_124,The architect designed the building to maximize natural light.,False,,medium,1,literal_description,,,Design intention,negative,phase1
+neg_125,The journalist interviewed five sources for the article.,False,,medium,1,literal_description,,,Reporting process,negative,phase1
+neg_126,"The chef prepared the meal using fresh, locally-sourced ingredients.",False,,medium,1,literal_description,,,Cooking approach,negative,phase1
+neg_127,The accountant reviewed the financial statements for accuracy.,False,,medium,1,literal_description,,,Professional task,negative,phase1
+neg_128,The programmer debugged the code to fix the error.,False,,medium,1,literal_description,,,Software development,negative,phase1
+neg_129,The doctor examined the patient and ordered additional tests.,False,,medium,1,literal_description,,,Medical procedure,negative,phase1
+neg_130,The lawyer drafted the contract according to the client's specifications.,False,,medium,1,literal_description,,,Legal work,negative,phase1
+neg_131,The scientist analyzed the data using statistical software.,False,,medium,1,literal_description,,,Research method,negative,phase1
+neg_132,The editor revised the manuscript to improve clarity.,False,,medium,1,literal_description,,,Editorial work,negative,phase1
+neg_133,The consultant provided recommendations based on industry best practices.,False,,medium,1,literal_description,,,Professional advice,negative,phase1
+neg_134,The photographer adjusted the camera settings to capture the scene.,False,,medium,1,literal_description,,,Photography technique,negative,phase1
+neg_135,The translator converted the document from Spanish to English.,False,,medium,1,literal_description,,,Translation work,negative,phase1
+neg_136,The conductor led the orchestra through the symphony.,False,,medium,1,literal_description,,,Musical direction,negative,phase1
+neg_137,The curator organized the exhibition chronologically.,False,,medium,1,literal_description,,,Museum work,negative,phase1
+neg_138,The therapist listened carefully to the patient's concerns.,False,,medium,1,literal_description,,,Therapeutic practice,negative,phase1
+neg_139,The engineer calculated the load-bearing capacity of the structure.,False,,medium,1,literal_description,,,Engineering analysis,negative,phase1
+neg_140,The researcher collected samples from ten different locations.,False,,medium,1,literal_description,,,Field work,negative,phase1
+neg_141,The policy requires employees to submit expense reports within 30 days.,False,,medium,1,factual_statement,,,Company policy,negative,phase1
+neg_142,The regulation limits emissions to 50 parts per million.,False,,medium,1,factual_statement,,,Environmental standard,negative,phase1
+neg_143,The protocol specifies that samples must be stored at -80°C.,False,,medium,1,factual_statement,,,Laboratory procedure,negative,phase1
+neg_144,The guidelines recommend a minimum of 150 minutes of exercise per week.,False,,medium,1,factual_statement,,,Health recommendation,negative,phase1
+neg_145,"The standard requires testing at intervals of 1,000 hours.",False,,medium,1,factual_statement,,,Quality control,negative,phase1
+neg_146,The procedure involves three distinct phases completed sequentially.,False,,medium,1,factual_statement,,,Process description,negative,phase1
+neg_147,The criteria include a minimum GPA of 3.5 and two letters of recommendation.,False,,medium,1,factual_statement,,,Admission requirements,negative,phase1
+neg_148,The specification calls for materials that meet ASTM standards.,False,,medium,1,factual_statement,,,Technical requirement,negative,phase1
+neg_149,The agreement stipulates payment within 30 days of invoice date.,False,,medium,1,factual_statement,,,Contract term,negative,phase1
+neg_150,The code requires exits to be clearly marked and illuminated.,False,,medium,1,factual_statement,,,Safety regulation,negative,phase1
+neg_151,The historical record indicates that the event occurred in 1776.,False,,medium,1,factual_statement,,,Historical fact,negative,phase1
+neg_152,The geological survey identified deposits of copper and zinc.,False,,medium,1,factual_statement,,,Survey finding,negative,phase1
+neg_153,"The census data shows a median household income of $65,000.",False,,medium,1,factual_statement,,,Demographic data,negative,phase1
+neg_154,The inventory includes 500 units in stock and 200 units on order.,False,,medium,1,factual_statement,,,Stock information,negative,phase1
+neg_155,The forecast predicts temperatures between 70 and 80 degrees.,False,,medium,1,factual_statement,,,Weather prediction,negative,phase1
+neg_156,The analysis revealed a correlation coefficient of 0.75.,False,,medium,1,factual_statement,,,Statistical finding,negative,phase1
+neg_157,The audit found no significant discrepancies in the accounts.,False,,medium,1,factual_statement,,,Audit result,negative,phase1
+neg_158,The inspection confirmed that all systems were functioning properly.,False,,medium,1,factual_statement,,,Inspection outcome,negative,phase1
+neg_159,The evaluation rated the program as highly effective.,False,,medium,1,factual_statement,,,Assessment result,negative,phase1
+neg_160,The review identified three areas requiring improvement.,False,,medium,1,factual_statement,,,Review finding,negative,phase1
+neg_161,The door opened when she turned the handle.,False,,easy,1,literal_description,,,Mechanical action,negative,phase1
+neg_162,The light turned on when he flipped the switch.,False,,easy,1,literal_description,,,Electrical action,negative,phase1
+neg_163,The alarm sounded at 6:00 AM as programmed.,False,,easy,1,literal_description,,,Automated function,negative,phase1
+neg_164,The printer produced 20 copies of the document.,False,,easy,1,literal_description,,,Machine output,negative,phase1
+neg_165,The elevator stopped at the fifth floor.,False,,easy,1,literal_description,,,Transportation function,negative,phase1
+neg_166,The thermostat maintained the temperature at 72 degrees.,False,,easy,1,literal_description,,,Climate control,negative,phase1
+neg_167,The timer beeped after 30 minutes.,False,,easy,1,literal_description,,,Time notification,negative,phase1
+neg_168,The lock clicked when the key was turned.,False,,easy,1,literal_description,,,Locking mechanism,negative,phase1
+neg_169,The fan circulated air throughout the room.,False,,easy,1,literal_description,,,Ventilation function,negative,phase1
+neg_170,The scale displayed a weight of 150 pounds.,False,,easy,1,literal_description,,,Measurement display,negative,phase1
+neg_171,The mirror reflected her image clearly.,False,,easy,1,literal_description,,,Optical property,negative,phase1
+neg_172,The magnet attracted the metal paperclips.,False,,easy,1,literal_description,,,Magnetic force,negative,phase1
+neg_173,The soap dissolved in the warm water.,False,,easy,1,literal_description,,,Chemical process,negative,phase1
+neg_174,The sponge absorbed the spilled liquid.,False,,easy,1,literal_description,,,Absorption action,negative,phase1
+neg_175,The zipper fastened the jacket closed.,False,,easy,1,literal_description,,,Fastening mechanism,negative,phase1
+neg_176,The wheels rotated as the car moved forward.,False,,easy,1,literal_description,,,Mechanical motion,negative,phase1
+neg_177,The lens focused the light into a sharp image.,False,,easy,1,literal_description,,,Optical function,negative,phase1
+neg_178,The filter removed impurities from the water.,False,,easy,1,literal_description,,,Filtration process,negative,phase1
+neg_179,The spring compressed when pressure was applied.,False,,easy,1,literal_description,,,Mechanical property,negative,phase1
+neg_180,The valve controlled the flow of water through the pipe.,False,,easy,1,literal_description,,,Flow control,negative,phase1
+neg_181,The committee reached a consensus after lengthy discussion.,False,,medium,1,literal_description,,,Group decision,negative,phase1
+neg_182,The team collaborated effectively to complete the project.,False,,medium,1,literal_description,,,Teamwork description,negative,phase1
+neg_183,The manager delegated tasks to team members based on their expertise.,False,,medium,1,literal_description,,,Management action,negative,phase1
+neg_184,The organization implemented new procedures to improve efficiency.,False,,medium,1,literal_description,,,Organizational change,negative,phase1
+neg_185,The board approved the budget for the upcoming fiscal year.,False,,medium,1,literal_description,,,Governance action,negative,phase1
+neg_186,The department hired three new employees last month.,False,,medium,1,factual_statement,,,Staffing information,negative,phase1
+neg_187,The company expanded operations to five new markets.,False,,medium,1,factual_statement,,,Business expansion,negative,phase1
+neg_188,The initiative reduced costs by 15% over six months.,False,,medium,1,factual_statement,,,Performance metric,negative,phase1
+neg_189,The merger combined two companies with complementary strengths.,False,,medium,1,literal_description,,,Business transaction,negative,phase1
+neg_190,The partnership enabled both organizations to share resources.,False,,medium,1,literal_description,,,Collaborative arrangement,negative,phase1
+neg_191,The negotiation resulted in a mutually beneficial agreement.,False,,medium,1,literal_description,,,Negotiation outcome,negative,phase1
+neg_192,The strategy focused on customer retention and satisfaction.,False,,medium,1,literal_description,,,Business approach,negative,phase1
+neg_193,The campaign increased brand awareness by 25%.,False,,medium,1,factual_statement,,,Marketing result,negative,phase1
+neg_194,The product launch exceeded sales projections by 10%.,False,,medium,1,factual_statement,,,Sales performance,negative,phase1
+neg_195,The training program improved employee productivity.,False,,medium,1,literal_description,,,Training outcome,negative,phase1
+neg_196,The restructuring eliminated redundant positions.,False,,medium,1,literal_description,,,Organizational change,negative,phase1
+neg_197,The investment generated a return of 8% annually.,False,,medium,1,factual_statement,,,Financial performance,negative,phase1
+neg_198,The acquisition added 500 employees to the workforce.,False,,medium,1,factual_statement,,,Workforce change,negative,phase1
+neg_199,The divestiture allowed the company to focus on core competencies.,False,,medium,1,literal_description,,,Strategic decision,negative,phase1
+neg_200,The diversification strategy reduced overall business risk.,False,,medium,1,literal_description,,,Risk management,negative,phase1
+biz_001,Our Q3 pipeline is looking healthy with several deals in the final stages.,True,metaphor,easy,1,,business_metaphor,,Pipeline metaphor for sales process,business,phase1
+biz_002,We need to pivot our strategy to capture the low-hanging fruit.,True,mixed metaphor,medium,1,,business_metaphor,,Pivot + low-hanging fruit,business,phase1
+biz_003,The company is bleeding cash and needs to stop the hemorrhaging immediately.,True,metaphor,medium,1,,business_metaphor,,Medical metaphor for financial loss,business,phase1
+biz_004,We're moving the needle on customer satisfaction scores.,True,metaphor,easy,1,,business_metaphor,,Measurement metaphor,business,phase1
+biz_005,Let's circle back on this issue after the stakeholder meeting.,True,metaphor,easy,1,,business_metaphor,,Circular motion metaphor,business,phase1
+biz_006,The market is hungry for innovative solutions.,True,personification,easy,1,,business_metaphor,,Market as hungry entity,business,phase1
+biz_007,We need to drill down into the data to find the root cause.,True,metaphor,medium,1,,business_metaphor,,Drilling metaphor for analysis,business,phase1
+biz_008,The new product launch will be a game-changer for our industry.,True,metaphor,easy,1,,sports_metaphor,,Sports metaphor in business,business,phase1
+biz_009,We're playing in a different league now after the acquisition.,True,metaphor,easy,1,,sports_metaphor,,Sports league metaphor,business,phase1
+biz_010,The competition is fierce and we need to stay ahead of the curve.,True,metaphor,medium,1,,business_metaphor,,Curve metaphor for trends,business,phase1
+biz_011,Let's touch base next week to discuss the quarterly results.,True,metaphor,easy,1,,sports_metaphor,,Baseball metaphor,business,phase1
+biz_012,The CEO hit it out of the park with that presentation.,True,metaphor,easy,1,,sports_metaphor,,Baseball home run metaphor,business,phase1
+biz_013,We're in the red zone and need to score on this opportunity.,True,metaphor,medium,1,,sports_metaphor,,Football metaphor,business,phase1
+biz_014,The project is a slam dunk if we can secure the funding.,True,metaphor,easy,1,,sports_metaphor,,Basketball metaphor,business,phase1
+biz_015,We need to level the playing field with our competitors.,True,metaphor,medium,1,,sports_metaphor,,Sports fairness metaphor,business,phase1
+biz_016,The company is punching above its weight in the market.,True,metaphor,medium,1,,sports_metaphor,,Boxing metaphor,business,phase1
+biz_017,Let's take this offline and discuss it one-on-one.,True,metaphor,easy,1,,tech_metaphor,,Online/offline metaphor,business,phase1
+biz_018,We need to get everyone on the same page before moving forward.,True,metaphor,easy,1,,business_metaphor,,Book/page metaphor,business,phase1
+biz_019,The market is saturated and we need to find a new niche.,True,metaphor,medium,1,,business_metaphor,,Saturation metaphor,business,phase1
+biz_020,Our brand is gaining traction in the millennial demographic.,True,metaphor,easy,1,,business_metaphor,,Traction metaphor,business,phase1
+biz_021,We're launching a full-court press to win this client.,True,metaphor,medium,1,,sports_metaphor,,Basketball defensive strategy,business,phase1
+biz_022,The company is at a crossroads and must choose its direction carefully.,True,metaphor,medium,1,,business_metaphor,,Crossroads metaphor,business,phase1
+biz_023,We need to think outside the box to solve this problem.,True,metaphor,easy,1,,business_metaphor,,Box metaphor for conventional thinking,business,phase1
+biz_024,The merger will create synergies across both organizations.,True,metaphor,medium,1,,business_metaphor,,Synergy as combined energy,business,phase1
+biz_025,We're building an ecosystem of partners and vendors.,True,metaphor,medium,1,,business_metaphor,,Biological ecosystem metaphor,business,phase1
+biz_026,The startup is disrupting the traditional business model.,True,metaphor,medium,1,,tech_metaphor,,Disruption metaphor,business,phase1
+biz_027,We need to scale the business to meet growing demand.,True,metaphor,easy,1,,business_metaphor,,Scaling metaphor,business,phase1
+biz_028,The company is burning through its cash reserves.,True,metaphor,medium,1,,business_metaphor,,Burning metaphor for spending,business,phase1
+biz_029,Let's unpack this issue and examine all the components.,True,metaphor,medium,1,,business_metaphor,,Unpacking metaphor,business,phase1
+biz_030,The market is ripe for disruption.,True,metaphor,easy,1,,business_metaphor,,Ripeness metaphor,business,phase1
+biz_031,We're going to war with our competitors over market share.,True,metaphor,medium,1,,war_metaphor,,War metaphor,business,phase1
+biz_032,The sales team is on the front lines dealing with customer complaints.,True,metaphor,medium,1,,war_metaphor,,Military front lines,business,phase1
+biz_033,We need to deploy our resources strategically.,True,metaphor,medium,1,,war_metaphor,,Military deployment,business,phase1
+biz_034,The company is under siege from aggressive competitors.,True,metaphor,hard,1,,war_metaphor,,Siege warfare metaphor,business,phase1
+biz_035,We're fighting a battle on multiple fronts.,True,metaphor,medium,1,,war_metaphor,,Multi-front battle,business,phase1
+biz_036,The marketing campaign is our secret weapon.,True,metaphor,easy,1,,war_metaphor,,Weapon metaphor,business,phase1
+biz_037,We need to defend our market position against new entrants.,True,metaphor,medium,1,,war_metaphor,,Defense metaphor,business,phase1
+biz_038,The company is launching an offensive to capture new markets.,True,metaphor,medium,1,,war_metaphor,,Military offensive,business,phase1
+biz_039,We're in the trenches working on this project.,True,metaphor,medium,1,,war_metaphor,,Trench warfare metaphor,business,phase1
+biz_040,The competitor's new product is a direct attack on our flagship offering.,True,metaphor,medium,1,,war_metaphor,,Attack metaphor,business,phase1
+biz_041,We need to rally the troops for the upcoming product launch.,True,metaphor,medium,1,,war_metaphor,,Military rally metaphor,business,phase1
+biz_042,The company is retreating from unprofitable markets.,True,metaphor,medium,1,,war_metaphor,,Military retreat,business,phase1
+biz_043,We're targeting high-value customers with our campaign.,True,metaphor,easy,1,,war_metaphor,,Targeting metaphor,business,phase1
+biz_044,The executive team is strategizing for the next quarter.,True,metaphor,easy,1,,war_metaphor,,Military strategy,business,phase1
+biz_045,We need to fortify our position before the competition responds.,True,metaphor,hard,1,,war_metaphor,,Fortification metaphor,business,phase1
+biz_046,The company is navigating choppy waters in the current economy.,True,metaphor,medium,1,,nautical_metaphor,,Sailing metaphor,business,phase1
+biz_047,We're all in the same boat and need to work together.,True,metaphor,easy,1,,nautical_metaphor,,Boat metaphor for shared situation,business,phase1
+biz_048,The CEO is steering the company in a new direction.,True,metaphor,easy,1,,nautical_metaphor,,Steering metaphor,business,phase1
+biz_049,We need to stay afloat during this economic downturn.,True,metaphor,medium,1,,nautical_metaphor,,Floating metaphor,business,phase1
+biz_050,The project is dead in the water without additional funding.,True,metaphor,medium,1,,nautical_metaphor,,Becalmed ship metaphor,business,phase1
+biz_051,The company is riding the wave of digital transformation.,True,metaphor,medium,1,,nautical_metaphor,,Wave riding metaphor,business,phase1
+biz_052,We're charting a course for sustainable growth.,True,metaphor,medium,1,,nautical_metaphor,,Navigation metaphor,business,phase1
+biz_053,The business is sinking under the weight of debt.,True,metaphor,medium,1,,nautical_metaphor,,Sinking ship metaphor,business,phase1
+biz_054,We need to weather the storm of negative publicity.,True,metaphor,medium,1,,nautical_metaphor,,Storm metaphor,business,phase1
+biz_055,The company has smooth sailing ahead after resolving the lawsuit.,True,metaphor,easy,1,,nautical_metaphor,,Smooth sailing metaphor,business,phase1
+biz_056,The organization is a well-oiled machine.,True,metaphor,easy,1,,mechanical_metaphor,,Machine metaphor,business,phase1
+biz_057,We need to grease the wheels to speed up the approval process.,True,metaphor,medium,1,,mechanical_metaphor,,Lubrication metaphor,business,phase1
+biz_058,The new policy threw a wrench in our plans.,True,metaphor,medium,1,,mechanical_metaphor,,Wrench in machinery,business,phase1
+biz_059,The team is firing on all cylinders this quarter.,True,metaphor,medium,1,,mechanical_metaphor,,Engine metaphor,business,phase1
+biz_060,We need to fine-tune our approach to customer service.,True,metaphor,easy,1,,mechanical_metaphor,,Tuning metaphor,business,phase1
+biz_061,The company is running like clockwork after the restructuring.,True,simile,easy,1,,mechanical_metaphor,,Clock mechanism simile,business,phase1
+biz_062,The supply chain is the backbone of our operations.,True,metaphor,easy,1,,body_metaphor,,Backbone metaphor,business,phase1
+biz_063,The company needs fresh blood to innovate.,True,metaphor,medium,1,,body_metaphor,,Blood metaphor for new people,business,phase1
+biz_064,We're the brains behind the operation.,True,metaphor,easy,1,,body_metaphor,,Brain metaphor,business,phase1
+biz_065,The sales team is the lifeblood of the organization.,True,metaphor,medium,1,,body_metaphor,,Lifeblood metaphor,business,phase1
+biz_066,The company has grown too fat and needs to trim down.,True,metaphor,medium,1,,body_metaphor,,Body weight metaphor,business,phase1
+biz_067,We need to get to the heart of the matter.,True,metaphor,easy,1,,body_metaphor,,Heart metaphor for core issue,business,phase1
+biz_068,The organization is suffering from growing pains.,True,metaphor,medium,1,,body_metaphor,,Growing pains metaphor,business,phase1
+biz_069,The company's culture is the DNA of our success.,True,metaphor,medium,1,,body_metaphor,,DNA metaphor,business,phase1
+biz_070,We need to inject new energy into the marketing campaign.,True,metaphor,medium,1,,body_metaphor,,Injection metaphor,business,phase1
+biz_071,The startup is in its infancy but showing great promise.,True,metaphor,easy,1,,lifecycle_metaphor,,Infancy metaphor,business,phase1
+biz_072,The product is in the final stages of development.,True,metaphor,easy,1,,lifecycle_metaphor,,Stages metaphor,business,phase1
+biz_073,The company is experiencing growing pains as it expands.,True,metaphor,medium,1,,lifecycle_metaphor,,Growth metaphor,business,phase1
+biz_074,The business model is mature and needs refreshing.,True,metaphor,medium,1,,lifecycle_metaphor,,Maturity metaphor,business,phase1
+biz_075,The technology is dying and will be obsolete soon.,True,metaphor,medium,1,,lifecycle_metaphor,,Death metaphor,business,phase1
+biz_076,We're planting seeds for future growth.,True,metaphor,medium,1,,agricultural_metaphor,,Planting metaphor,business,phase1
+biz_077,The investment will bear fruit in the next fiscal year.,True,metaphor,medium,1,,agricultural_metaphor,,Fruit-bearing metaphor,business,phase1
+biz_078,We're cultivating relationships with key stakeholders.,True,metaphor,medium,1,,agricultural_metaphor,,Cultivation metaphor,business,phase1
+biz_079,The market is fertile ground for our new product.,True,metaphor,medium,1,,agricultural_metaphor,,Fertile ground metaphor,business,phase1
+biz_080,We need to harvest the benefits of our earlier investments.,True,metaphor,medium,1,,agricultural_metaphor,,Harvest metaphor,business,phase1
+biz_081,The company is reaping what it sowed with poor customer service.,True,metaphor,hard,1,,agricultural_metaphor,,Reaping/sowing metaphor,business,phase1
+biz_082,We're nurturing talent within the organization.,True,metaphor,easy,1,,agricultural_metaphor,,Nurturing metaphor,business,phase1
+biz_083,The idea is still germinating and needs more development.,True,metaphor,hard,1,,agricultural_metaphor,,Germination metaphor,business,phase1
+biz_084,The partnership is blossoming into a profitable relationship.,True,metaphor,medium,1,,agricultural_metaphor,,Blossoming metaphor,business,phase1
+biz_085,We need to prune unnecessary expenses from the budget.,True,metaphor,medium,1,,agricultural_metaphor,,Pruning metaphor,business,phase1
+biz_086,The company is building a bridge to new markets.,True,metaphor,easy,1,,construction_metaphor,,Bridge building metaphor,business,phase1
+biz_087,We're laying the foundation for long-term success.,True,metaphor,easy,1,,construction_metaphor,,Foundation metaphor,business,phase1
+biz_088,The organizational structure is crumbling under pressure.,True,metaphor,medium,1,,construction_metaphor,,Crumbling structure,business,phase1
+biz_089,We need to construct a solid business case for the investment.,True,metaphor,easy,1,,construction_metaphor,,Construction metaphor,business,phase1
+biz_090,The company is building momentum in the marketplace.,True,metaphor,easy,1,,construction_metaphor,,Building metaphor,business,phase1
+biz_091,The deal is a house of cards that could collapse at any moment.,True,metaphor,hard,1,,construction_metaphor,,House of cards metaphor,business,phase1
+biz_092,We're cementing our position as market leader.,True,metaphor,medium,1,,construction_metaphor,,Cementing metaphor,business,phase1
+biz_093,The strategy has cracks that need to be addressed.,True,metaphor,medium,1,,construction_metaphor,,Cracks metaphor,business,phase1
+biz_094,We're building walls between departments that hinder collaboration.,True,metaphor,medium,1,,construction_metaphor,,Walls metaphor,business,phase1
+biz_095,The company is on solid ground financially.,True,metaphor,easy,1,,construction_metaphor,,Solid ground metaphor,business,phase1
+biz_096,The market is a jungle and only the strong survive.,True,metaphor,medium,1,,nature_metaphor,,Jungle metaphor,business,phase1
+biz_097,We're swimming with sharks in this industry.,True,metaphor,medium,1,,nature_metaphor,,Shark metaphor,business,phase1
+biz_098,The company is the lion's share of the market.,True,metaphor,medium,1,,nature_metaphor,,Lion metaphor,business,phase1
+biz_099,We need to separate the wheat from the chaff in these proposals.,True,metaphor,hard,1,,agricultural_metaphor,,Wheat/chaff metaphor,business,phase1
+biz_100,The business landscape is changing rapidly.,True,metaphor,easy,1,,nature_metaphor,,Landscape metaphor,business,phase1
+sci_001,DNA acts as a blueprint for building proteins.,True,metaphor,easy,1,,model_metaphor,,Blueprint metaphor for genetic information,scientific,phase1
+sci_002,The cell membrane behaves like a selective gatekeeper.,True,simile,medium,1,,pedagogical_simile,,Gatekeeper simile for membrane function,scientific,phase1
+sci_003,Electrons orbit the nucleus like planets around the sun.,True,simile,easy,1,,pedagogical_simile,,Solar system analogy for atomic structure,scientific,phase1
+sci_004,The mitochondria are the powerhouses of the cell.,True,metaphor,easy,1,,model_metaphor,,Powerhouse metaphor for energy production,scientific,phase1
+sci_005,Enzymes act as catalysts that speed up chemical reactions.,True,metaphor,easy,1,,model_metaphor,,Catalyst as facilitator,scientific,phase1
+sci_006,The immune system is the body's defense army.,True,metaphor,easy,1,,model_metaphor,,Military metaphor for immune function,scientific,phase1
+sci_007,Neurons communicate with each other through electrical signals.,True,personification,easy,1,,technical_personification,,Communication metaphor for neural transmission,scientific,phase1
+sci_008,The heart pumps blood like a mechanical pump.,True,simile,easy,1,,pedagogical_simile,,Pump analogy for heart function,scientific,phase1
+sci_009,DNA unzips during replication.,True,personification,easy,1,,technical_personification,,Zipper metaphor for DNA separation,scientific,phase1
+sci_010,The brain is like a computer processing information.,True,simile,easy,1,,pedagogical_simile,,Computer analogy for brain function,scientific,phase1
+sci_011,Ribosomes are the protein factories of the cell.,True,metaphor,easy,1,,model_metaphor,,Factory metaphor for protein synthesis,scientific,phase1
+sci_012,The endoplasmic reticulum serves as a highway for transporting molecules.,True,metaphor,medium,1,,model_metaphor,,Highway metaphor for cellular transport,scientific,phase1
+sci_013,Chromosomes are packages of genetic information.,True,metaphor,easy,1,,model_metaphor,,Package metaphor for DNA organization,scientific,phase1
+sci_014,The cell cycle is a carefully orchestrated dance of molecular events.,True,metaphor,medium,1,,model_metaphor,,Dance metaphor for coordinated processes,scientific,phase1
+sci_015,Antibodies recognize and tag foreign invaders for destruction.,True,personification,medium,1,,technical_personification,,Recognition and tagging as intentional actions,scientific,phase1
+sci_016,The Golgi apparatus acts as the cell's post office.,True,metaphor,easy,1,,model_metaphor,,Post office metaphor for sorting and shipping,scientific,phase1
+sci_017,Photosynthesis is nature's way of capturing solar energy.,True,personification,easy,1,,technical_personification,,Nature as intentional agent,scientific,phase1
+sci_018,The double helix structure of DNA resembles a twisted ladder.,True,simile,easy,1,,pedagogical_simile,,Ladder analogy for DNA structure,scientific,phase1
+sci_019,Stem cells are the body's master cells that can differentiate into any cell type.,True,metaphor,medium,1,,model_metaphor,,Master metaphor for pluripotency,scientific,phase1
+sci_020,The nervous system is the body's electrical wiring.,True,metaphor,easy,1,,model_metaphor,,Wiring metaphor for neural network,scientific,phase1
+sci_021,Gravity pulls objects toward each other.,True,personification,easy,1,,technical_personification,,Pull as intentional action,scientific,phase1
+sci_022,Light behaves as both a wave and a particle.,True,personification,easy,1,,technical_personification,,Behavior metaphor for quantum properties,scientific,phase1
+sci_023,The atom is mostly empty space with a dense nucleus at its center.,True,metaphor,easy,1,,model_metaphor,,Space metaphor for atomic structure,scientific,phase1
+sci_024,Magnetic fields guide charged particles along specific paths.,True,personification,medium,1,,technical_personification,,Guidance as intentional action,scientific,phase1
+sci_025,Energy flows from hot objects to cold objects.,True,personification,easy,1,,technical_personification,,Flow metaphor for heat transfer,scientific,phase1
+sci_026,The universe is expanding like a balloon being inflated.,True,simile,medium,1,,pedagogical_simile,,Balloon analogy for cosmic expansion,scientific,phase1
+sci_027,Black holes are cosmic vacuum cleaners that suck in everything nearby.,True,metaphor,medium,1,,model_metaphor,,Vacuum cleaner metaphor for gravitational pull,scientific,phase1
+sci_028,Quantum particles exist in a superposition of states until observed.,True,metaphor,hard,1,,model_metaphor,,Superposition as layered existence,scientific,phase1
+sci_029,The Big Bang was the birth of the universe.,True,metaphor,easy,1,,model_metaphor,,Birth metaphor for cosmic origin,scientific,phase1
+sci_030,Spacetime is a fabric that can be warped by massive objects.,True,metaphor,medium,1,,model_metaphor,,Fabric metaphor for spacetime,scientific,phase1
+sci_031,Chemical bonds are the glue that holds atoms together.,True,metaphor,easy,1,,model_metaphor,,Glue metaphor for atomic attraction,scientific,phase1
+sci_032,Acids donate protons while bases accept them.,True,personification,easy,1,,technical_personification,,Donation and acceptance as intentional,scientific,phase1
+sci_033,Molecules vibrate and rotate at specific frequencies.,True,personification,easy,1,,technical_personification,,Vibration and rotation as actions,scientific,phase1
+sci_034,Catalysts lower the activation energy barrier for reactions.,True,metaphor,medium,1,,model_metaphor,,Barrier metaphor for energy requirement,scientific,phase1
+sci_035,Electrons jump between energy levels in atoms.,True,personification,easy,1,,technical_personification,,Jumping as movement metaphor,scientific,phase1
+sci_036,The periodic table organizes elements like a filing system.,True,simile,easy,1,,pedagogical_simile,,Filing system analogy for organization,scientific,phase1
+sci_037,Ionic bonds form when atoms steal electrons from each other.,True,personification,medium,1,,technical_personification,,Stealing metaphor for electron transfer,scientific,phase1
+sci_038,Covalent bonds share electrons between atoms.,True,personification,easy,1,,technical_personification,,Sharing metaphor for electron pairing,scientific,phase1
+sci_039,Chemical equilibrium is a dynamic balance between forward and reverse reactions.,True,metaphor,medium,1,,model_metaphor,,Balance metaphor for equilibrium,scientific,phase1
+sci_040,Entropy is nature's tendency toward disorder.,True,personification,medium,1,,technical_personification,,Tendency as intentional direction,scientific,phase1
+sci_041,Tectonic plates float on the mantle like rafts on water.,True,simile,easy,1,,pedagogical_simile,,Raft analogy for plate tectonics,scientific,phase1
+sci_042,Volcanoes are Earth's pressure release valves.,True,metaphor,medium,1,,model_metaphor,,Valve metaphor for volcanic activity,scientific,phase1
+sci_043,The water cycle is nature's recycling system.,True,metaphor,easy,1,,model_metaphor,,Recycling metaphor for water movement,scientific,phase1
+sci_044,Erosion sculpts the landscape over millions of years.,True,personification,medium,1,,technical_personification,,Sculpting as artistic action,scientific,phase1
+sci_045,The Earth's core is a furnace generating heat.,True,metaphor,easy,1,,model_metaphor,,Furnace metaphor for geothermal energy,scientific,phase1
+sci_046,Glaciers are rivers of ice that flow slowly downhill.,True,metaphor,easy,1,,model_metaphor,,River metaphor for glacier movement,scientific,phase1
+sci_047,Earthquakes release built-up stress in the Earth's crust.,True,personification,medium,1,,technical_personification,,Release as intentional action,scientific,phase1
+sci_048,The atmosphere is a protective blanket around Earth.,True,metaphor,easy,1,,model_metaphor,,Blanket metaphor for atmospheric protection,scientific,phase1
+sci_049,Ocean currents are conveyor belts distributing heat around the globe.,True,metaphor,medium,1,,model_metaphor,,Conveyor belt metaphor for circulation,scientific,phase1
+sci_050,Fossils are windows into the past.,True,metaphor,easy,1,,model_metaphor,,Window metaphor for historical evidence,scientific,phase1
+sci_051,Natural selection is nature's way of editing the genetic code.,True,personification,medium,1,,technical_personification,,Editing metaphor for evolutionary process,scientific,phase1
+sci_052,Evolution is a blind watchmaker creating complexity without foresight.,True,metaphor,hard,1,,model_metaphor,,Watchmaker metaphor for evolutionary mechanism,scientific,phase1
+sci_053,Genes are recipes for making proteins.,True,metaphor,easy,1,,model_metaphor,,Recipe metaphor for genetic instructions,scientific,phase1
+sci_054,Mutations are typos in the genetic code.,True,metaphor,easy,1,,model_metaphor,,Typo metaphor for genetic errors,scientific,phase1
+sci_055,Species adapt to their environment through natural selection.,True,personification,easy,1,,technical_personification,,Adaptation as intentional response,scientific,phase1
+sci_056,The tree of life branches out to show evolutionary relationships.,True,metaphor,medium,1,,model_metaphor,,Tree metaphor for phylogeny,scientific,phase1
+sci_057,Predators and prey are locked in an evolutionary arms race.,True,metaphor,medium,1,,model_metaphor,,Arms race metaphor for coevolution,scientific,phase1
+sci_058,Ecosystems are delicate webs of interconnected species.,True,metaphor,medium,1,,model_metaphor,,Web metaphor for ecological relationships,scientific,phase1
+sci_059,Biodiversity is nature's insurance policy against environmental change.,True,metaphor,hard,1,,model_metaphor,,Insurance metaphor for resilience,scientific,phase1
+sci_060,Invasive species are ecological bulldozers disrupting native communities.,True,metaphor,medium,1,,model_metaphor,,Bulldozer metaphor for invasive impact,scientific,phase1
+sci_061,The brain rewires itself through neuroplasticity.,True,personification,medium,1,,technical_personification,,Rewiring metaphor for neural adaptation,scientific,phase1
+sci_062,Memories are stored in networks of connected neurons.,True,metaphor,medium,1,,model_metaphor,,Storage metaphor for memory encoding,scientific,phase1
+sci_063,Neurotransmitters are chemical messengers between neurons.,True,metaphor,easy,1,,model_metaphor,,Messenger metaphor for signaling,scientific,phase1
+sci_064,The prefrontal cortex is the brain's executive control center.,True,metaphor,medium,1,,model_metaphor,,Executive metaphor for cognitive control,scientific,phase1
+sci_065,Sleep allows the brain to consolidate memories and clear waste.,True,personification,medium,1,,technical_personification,,Clearing as intentional maintenance,scientific,phase1
+sci_066,Dopamine is the brain's reward chemical.,True,metaphor,easy,1,,model_metaphor,,Reward metaphor for neurotransmitter function,scientific,phase1
+sci_067,The amygdala is the brain's alarm system for detecting threats.,True,metaphor,medium,1,,model_metaphor,,Alarm system metaphor for fear response,scientific,phase1
+sci_068,Neural pathways are highways for information in the brain.,True,metaphor,easy,1,,model_metaphor,,Highway metaphor for neural transmission,scientific,phase1
+sci_069,The hippocampus is the brain's memory filing cabinet.,True,metaphor,easy,1,,model_metaphor,,Filing cabinet metaphor for memory storage,scientific,phase1
+sci_070,Synapses strengthen or weaken based on use.,True,personification,easy,1,,technical_personification,,Strengthening as adaptive response,scientific,phase1
+sci_071,Viruses hijack cellular machinery to replicate themselves.,True,personification,medium,1,,technical_personification,,Hijacking metaphor for viral replication,scientific,phase1
+sci_072,Bacteria evolve resistance to antibiotics through natural selection.,True,personification,medium,1,,technical_personification,,Evolution as intentional adaptation,scientific,phase1
+sci_073,The immune system remembers past infections.,True,personification,easy,1,,technical_personification,,Memory metaphor for immune response,scientific,phase1
+sci_074,White blood cells patrol the body looking for invaders.,True,personification,medium,1,,technical_personification,,Patrol metaphor for immune surveillance,scientific,phase1
+sci_075,Vaccines train the immune system to recognize pathogens.,True,personification,medium,1,,technical_personification,,Training metaphor for immunization,scientific,phase1
+sci_076,Cancer cells ignore the body's stop signals and divide uncontrollably.,True,personification,medium,1,,technical_personification,,Ignoring as intentional disobedience,scientific,phase1
+sci_077,Hormones are chemical messengers that regulate body functions.,True,metaphor,easy,1,,model_metaphor,,Messenger metaphor for endocrine signaling,scientific,phase1
+sci_078,The liver is the body's detoxification plant.,True,metaphor,easy,1,,model_metaphor,,Plant metaphor for metabolic processing,scientific,phase1
+sci_079,Kidneys filter waste from the blood like a coffee filter.,True,simile,easy,1,,pedagogical_simile,,Coffee filter analogy for filtration,scientific,phase1
+sci_080,The respiratory system is a gas exchange interface.,True,metaphor,medium,1,,model_metaphor,,Interface metaphor for lung function,scientific,phase1
+sci_081,Algorithms are recipes for solving computational problems.,True,metaphor,easy,1,,model_metaphor,,Recipe metaphor for procedures,scientific,phase1
+sci_082,Computer memory is organized like a filing cabinet with addresses.,True,simile,easy,1,,pedagogical_simile,,Filing cabinet analogy for memory,scientific,phase1
+sci_083,The CPU is the brain of the computer.,True,metaphor,easy,1,,model_metaphor,,Brain metaphor for processing unit,scientific,phase1
+sci_084,Data flows through the computer like water through pipes.,True,simile,easy,1,,pedagogical_simile,,Water flow analogy for data transfer,scientific,phase1
+sci_085,Firewalls are digital barriers protecting networks from threats.,True,metaphor,medium,1,,model_metaphor,,Barrier metaphor for security,scientific,phase1
+sci_086,Machine learning algorithms learn from data like students from examples.,True,simile,medium,1,,pedagogical_simile,,Student learning analogy for ML,scientific,phase1
+sci_087,Neural networks mimic the structure of biological brains.,True,personification,medium,1,,technical_personification,,Mimicry metaphor for artificial networks,scientific,phase1
+sci_088,Encryption scrambles data to protect it from unauthorized access.,True,personification,medium,1,,technical_personification,,Scrambling metaphor for cryptography,scientific,phase1
+sci_089,The internet is a web of interconnected computers.,True,metaphor,easy,1,,model_metaphor,,Web metaphor for network topology,scientific,phase1
+sci_090,Viruses infect computers and spread to other systems.,True,personification,medium,1,,technical_personification,,Infection metaphor for malware,scientific,phase1
+sci_091,The greenhouse effect traps heat in Earth's atmosphere like a blanket.,True,simile,medium,1,,pedagogical_simile,,Blanket analogy for heat retention,scientific,phase1
+sci_092,Carbon dioxide acts as a thermostat for Earth's climate.,True,metaphor,medium,1,,model_metaphor,,Thermostat metaphor for climate regulation,scientific,phase1
+sci_093,Renewable energy sources tap into nature's power.,True,personification,easy,1,,technical_personification,,Tapping metaphor for energy harvesting,scientific,phase1
+sci_094,Fossil fuels are ancient sunlight stored in chemical bonds.,True,metaphor,hard,1,,model_metaphor,,Stored sunlight metaphor for energy,scientific,phase1
+sci_095,The ozone layer is Earth's sunscreen protecting against UV radiation.,True,metaphor,easy,1,,model_metaphor,,Sunscreen metaphor for UV protection,scientific,phase1
+sci_096,Deforestation is removing Earth's lungs.,True,metaphor,medium,1,,model_metaphor,,Lungs metaphor for oxygen production,scientific,phase1
+sci_097,Ocean acidification is climate change's evil twin.,True,metaphor,hard,1,,model_metaphor,,Evil twin metaphor for related problem,scientific,phase1
+sci_098,Feedback loops amplify or dampen climate changes.,True,personification,medium,1,,technical_personification,,Amplification metaphor for system dynamics,scientific,phase1
+sci_099,The carbon cycle is nature's way of recycling carbon atoms.,True,personification,medium,1,,technical_personification,,Recycling metaphor for biogeochemical cycle,scientific,phase1
+sci_100,Tipping points are thresholds beyond which climate change accelerates.,True,metaphor,hard,1,,model_metaphor,,Tipping point metaphor for nonlinear change,scientific,phase1
+multi_001,"The project was a marathon, not a sprint, and we needed to pace ourselves carefully.",True,metaphor,easy,2,,,same_type,Marathon and sprint metaphors,multiple-instances,phase1
+multi_002,"Her smile was sunshine, and her laughter was music to my ears.",True,metaphor,easy,2,,,same_type,Sunshine and music metaphors,multiple-instances,phase1
+multi_003,"Time is money, so don't waste it on trivial matters.",True,metaphor,easy,2,,,same_type,"Time as money, waste as spending",multiple-instances,phase1
+multi_004,The city sleeps under a blanket of stars that wink down at us.,True,personification,medium,3,,,same_type,"City sleeps, blanket, stars wink",multiple-instances,phase1
+multi_005,"His words were daggers, his silence was deafening, and his departure was a thunderclap.",True,metaphor,medium,3,,,same_type,"Daggers, deafening silence, thunderclap",multiple-instances,phase1
+multi_006,"The wind whispered secrets, the trees danced, and the river sang its ancient song.",True,personification,medium,3,,,same_type,"Wind whispers, trees dance, river sings",multiple-instances,phase1
+multi_007,"Life is a journey, and every experience is a stepping stone toward wisdom.",True,metaphor,easy,2,,,same_type,Journey and stepping stone metaphors,multiple-instances,phase1
+multi_008,"The classroom was a zoo, the students were wild animals, and the teacher was the zookeeper.",True,metaphor,medium,3,,,same_type,"Zoo, animals, zookeeper metaphors",multiple-instances,phase1
+multi_009,"Her heart was stone, her eyes were ice, and her voice was steel.",True,metaphor,easy,3,,,same_type,"Stone, ice, steel metaphors for coldness",multiple-instances,phase1
+multi_010,The economy is a patient with multiple chronic conditions being treated by doctors with competing theories.,True,metaphor,hard,2,,,same_type,Patient metaphor extended,multiple-instances,phase1
+multi_011,The sun smiled down on us like a proud parent watching children play.,True,mixed,easy,2,,,different_types,Personification (smiled) and simile (like parent),multiple-instances,phase1
+multi_012,The old house groaned and creaked as if it were telling stories of the past.,True,mixed,medium,2,,,different_types,Personification (groaned/creaked) and simile (as if telling),multiple-instances,phase1
+multi_013,"Time flies when you're having fun, but it crawls like a snail when you're bored.",True,mixed,medium,3,,,different_types,Personification (flies/crawls) and simile (like snail),multiple-instances,phase1
+multi_014,"The storm raged like an angry beast, and the thunder roared its fury.",True,mixed,medium,3,,,different_types,"Simile (like beast), personification (raged, roared)",multiple-instances,phase1
+multi_015,"Her words cut like a knife, leaving wounds that would take years to heal.",True,mixed,medium,2,,,different_types,Simile (like knife) and metaphor (wounds),multiple-instances,phase1
+multi_016,"The city is a jungle where only the strong survive, and predators lurk around every corner.",True,metaphor,medium,2,,,same_type,Jungle metaphor extended,multiple-instances,phase1
+multi_017,"The computer died, the printer refused to work, and the phone decided to take a vacation.",True,personification,medium,3,,,same_type,"Died, refused, decided - all personification",multiple-instances,phase1
+multi_018,"His anger was a volcano ready to erupt, spewing hot lava of harsh words.",True,metaphor,medium,2,,,same_type,Volcano and lava metaphors,multiple-instances,phase1
+multi_019,"The moon hung in the sky like a silver coin, and the stars were scattered diamonds.",True,mixed,easy,2,,,different_types,Simile (like coin) and metaphor (diamonds),multiple-instances,phase1
+multi_020,"The garden was paradise, the flowers were jewels, and the fragrance was perfume from heaven.",True,metaphor,medium,3,,,same_type,"Paradise, jewels, perfume metaphors",multiple-instances,phase1
+multi_021,"The data tells a story, the numbers paint a picture, and the trends reveal the truth.",True,personification,medium,3,,,same_type,"Tells, paint, reveal - all personification",multiple-instances,phase1
+multi_022,"Her voice was velvet, smooth as silk, and soft as a whisper.",True,mixed,medium,3,,,different_types,"Metaphor (velvet), simile (smooth as silk, soft as whisper)",multiple-instances,phase1
+multi_023,"The deadline is breathing down our necks, time is running out, and pressure is mounting.",True,personification,medium,3,,,same_type,"Breathing, running, mounting - all personification",multiple-instances,phase1
+multi_024,"The market is hungry for innovation, thirsty for new ideas, and starving for disruption.",True,personification,medium,3,,,same_type,"Hungry, thirsty, starving - all personification",multiple-instances,phase1
+multi_025,"His mind was a steel trap, sharp as a razor, and quick as lightning.",True,mixed,medium,3,,,different_types,"Metaphor (steel trap), simile (sharp as razor, quick as lightning)",multiple-instances,phase1
+multi_026,"The company is bleeding money, hemorrhaging cash, and drowning in debt.",True,metaphor,medium,3,,,same_type,"Bleeding, hemorrhaging, drowning - medical/water metaphors",multiple-instances,phase1
+multi_027,"The book was a treasure chest of wisdom, a fountain of knowledge, and a beacon of enlightenment.",True,metaphor,hard,3,,,same_type,"Treasure chest, fountain, beacon metaphors",multiple-instances,phase1
+multi_028,"The politician's promises were empty, hollow as a drum, and worthless as fool's gold.",True,mixed,medium,3,,,different_types,"Metaphor (empty), simile (hollow as drum, worthless as fool's gold)",multiple-instances,phase1
+multi_029,"The ocean roared its displeasure, the waves crashed angrily, and the wind howled in protest.",True,personification,medium,3,,,same_type,"Roared, crashed angrily, howled - all personification",multiple-instances,phase1
+multi_030,"Success is a ladder you must climb one rung at a time, and failure is a teacher showing you the way.",True,metaphor,medium,2,,,same_type,Ladder and teacher metaphors,multiple-instances,phase1
+multi_031,"The news spread like wildfire, rumors flew through the air, and gossip traveled at the speed of light.",True,mixed,medium,3,,,different_types,"Simile (like wildfire), personification (flew), hyperbole (speed of light)",multiple-instances,phase1
+multi_032,"The forest was a cathedral, the trees were pillars, and the canopy was a vaulted ceiling.",True,metaphor,medium,3,,,same_type,"Cathedral, pillars, ceiling metaphors",multiple-instances,phase1
+multi_033,"Her patience wore thin, her temper frayed, and her composure shattered like glass.",True,mixed,medium,3,,,different_types,"Metaphors (wore thin, frayed) and simile (like glass)",multiple-instances,phase1
+multi_034,"The river of time flows endlessly, carrying memories downstream, and washing away the past.",True,metaphor,medium,3,,,same_type,"River, carrying, washing - water metaphors",multiple-instances,phase1
+multi_035,"The argument was a battlefield, words were weapons, and silence was a strategic retreat.",True,metaphor,medium,3,,,same_type,"Battlefield, weapons, retreat - war metaphors",multiple-instances,phase1
+multi_036,"The sunset painted the sky with fire, splashed orange across the clouds, and gilded the horizon.",True,personification,medium,3,,,same_type,"Painted, splashed, gilded - all personification",multiple-instances,phase1
+multi_037,"His reputation was spotless, clean as a whistle, and pure as driven snow.",True,mixed,medium,3,,,different_types,"Metaphor (spotless), simile (clean as whistle, pure as snow)",multiple-instances,phase1
+multi_038,"The machine hummed contentedly, purred like a cat, and sang its mechanical song.",True,mixed,medium,3,,,different_types,"Personification (hummed contentedly), simile (like cat), personification (sang)",multiple-instances,phase1
+multi_039,"The city is a living organism, breathing in workers each morning and exhaling them each evening.",True,metaphor,hard,2,,,same_type,Organism and breathing metaphors,multiple-instances,phase1
+multi_040,"The problem is a puzzle we must solve, a knot we must untangle, and a maze we must navigate.",True,metaphor,medium,3,,,same_type,"Puzzle, knot, maze metaphors",multiple-instances,phase1
+multi_041,"Her dreams were castles in the air, built on foundations of hope, and decorated with wishes.",True,metaphor,medium,3,,,same_type,"Castles, foundations, decorated - construction metaphors",multiple-instances,phase1
+multi_042,"The truth is a mirror reflecting reality, a light illuminating darkness, and a compass pointing the way.",True,metaphor,hard,3,,,same_type,"Mirror, light, compass metaphors",multiple-instances,phase1
+multi_043,"The winter was brutal, cold as death, and merciless in its assault on the homeless.",True,mixed,medium,3,,,different_types,"Personification (brutal, merciless), simile (cold as death)",multiple-instances,phase1
+multi_044,"The software is buggy, crashes like a house of cards, and performs as slowly as molasses.",True,mixed,medium,3,,,different_types,"Metaphor (buggy), simile (like house of cards, as slowly as molasses)",multiple-instances,phase1
+multi_045,"The team is firing on all cylinders, running like a well-oiled machine, and performing at peak efficiency.",True,mixed,medium,3,,,different_types,"Metaphor (firing on cylinders), simile (like machine), metaphor (peak)",multiple-instances,phase1
+multi_046,"The opportunity is knocking at our door, calling our name, and waiting for us to answer.",True,personification,medium,3,,,same_type,"Knocking, calling, waiting - all personification",multiple-instances,phase1
+multi_047,"The mountain stood like a sentinel, guarding the valley, and watching over the village below.",True,mixed,medium,3,,,different_types,"Simile (like sentinel), personification (guarding, watching)",multiple-instances,phase1
+multi_048,"The idea germinated in his mind, took root in his imagination, and blossomed into a brilliant plan.",True,metaphor,medium,3,,,same_type,"Germinated, took root, blossomed - plant metaphors",multiple-instances,phase1
+multi_049,"The debate was a circus, the candidates were clowns, and the moderator was the ringmaster.",True,metaphor,medium,3,,,same_type,"Circus, clowns, ringmaster metaphors",multiple-instances,phase1
+multi_050,"The fog rolled in like a blanket, wrapped the city in gray, and hid everything from view.",True,mixed,medium,3,,,different_types,"Simile (like blanket), personification (wrapped, hid)",multiple-instances,phase1
+multi_051,"The stock market is a roller coaster, climbing to dizzying heights and plunging to terrifying lows.",True,metaphor,medium,2,,,same_type,Roller coaster metaphor extended,multiple-instances,phase1
+multi_052,"The child's imagination was boundless, wild as the ocean, and free as a bird.",True,mixed,medium,3,,,different_types,"Metaphor (boundless), simile (wild as ocean, free as bird)",multiple-instances,phase1
+multi_053,"The disease spread through the population, infected thousands, and claimed countless lives.",True,personification,medium,3,,,same_type,"Spread, infected, claimed - all personification",multiple-instances,phase1
+multi_054,"The building was a monument to excess, a temple of greed, and a shrine to materialism.",True,metaphor,hard,3,,,same_type,"Monument, temple, shrine metaphors",multiple-instances,phase1
+multi_055,"The music flowed like water, washed over the audience, and carried them away on waves of emotion.",True,mixed,medium,3,,,different_types,"Simile (like water), personification (washed, carried)",multiple-instances,phase1
+multi_056,"The politician danced around the question, dodged the issue, and sidestepped the controversy.",True,metaphor,medium,3,,,same_type,"Danced, dodged, sidestepped - movement metaphors",multiple-instances,phase1
+multi_057,"The fire consumed the forest, devoured everything in its path, and left only ashes behind.",True,personification,medium,3,,,same_type,"Consumed, devoured, left - all personification",multiple-instances,phase1
+multi_058,"The relationship was toxic, poisonous as arsenic, and deadly to both parties involved.",True,mixed,medium,3,,,different_types,"Metaphor (toxic), simile (poisonous as arsenic), metaphor (deadly)",multiple-instances,phase1
+multi_059,"The algorithm is intelligent, learns like a student, and adapts to new situations.",True,mixed,medium,3,,,different_types,"Personification (intelligent), simile (like student), personification (adapts)",multiple-instances,phase1
+multi_060,"The bridge connects two worlds, spans the divide, and unites what was once separate.",True,metaphor,medium,3,,,same_type,"Connects, spans, unites - connection metaphors",multiple-instances,phase1
+multi_061,"The silence was deafening, heavy as lead, and oppressive in its completeness.",True,mixed,medium,3,,,different_types,"Metaphor (deafening), simile (heavy as lead), personification (oppressive)",multiple-instances,phase1
+multi_062,"The startup is a rocket ship, accelerating rapidly, and aiming for the stars.",True,metaphor,medium,3,,,same_type,"Rocket ship, accelerating, aiming for stars - space metaphors",multiple-instances,phase1
+multi_063,"The teacher planted seeds of knowledge, cultivated curiosity, and harvested understanding.",True,metaphor,medium,3,,,same_type,"Planted, cultivated, harvested - agricultural metaphors",multiple-instances,phase1
+multi_064,"The storm was a monster, fierce as a lion, and destructive beyond measure.",True,mixed,medium,3,,,different_types,"Metaphor (monster), simile (fierce as lion), hyperbole (beyond measure)",multiple-instances,phase1
+multi_065,"The memory haunted him, followed him like a shadow, and refused to let him forget.",True,mixed,medium,3,,,different_types,"Personification (haunted), simile (like shadow), personification (refused)",multiple-instances,phase1
+multi_066,"The city pulses with energy, throbs with life, and vibrates with possibility.",True,personification,medium,3,,,same_type,"Pulses, throbs, vibrates - all personification",multiple-instances,phase1
+multi_067,"The theory is elegant, beautiful as a symphony, and profound in its simplicity.",True,mixed,medium,3,,,different_types,"Metaphor (elegant), simile (beautiful as symphony), metaphor (profound)",multiple-instances,phase1
+multi_068,"The glacier carved the valley, sculpted the landscape, and shaped the mountains.",True,personification,medium,3,,,same_type,"Carved, sculpted, shaped - all personification",multiple-instances,phase1
+multi_069,"The lie grew like a cancer, spread through the community, and poisoned relationships.",True,mixed,medium,3,,,different_types,"Simile (like cancer), personification (spread, poisoned)",multiple-instances,phase1
+multi_070,"The code is spaghetti, tangled as a ball of yarn, and impossible to debug.",True,mixed,medium,3,,,different_types,"Metaphor (spaghetti), simile (tangled as yarn), hyperbole (impossible)",multiple-instances,phase1
+multi_071,"The revolution was a wildfire, spreading rapidly, and consuming the old order.",True,metaphor,medium,3,,,same_type,"Wildfire, spreading, consuming - fire metaphors",multiple-instances,phase1
+multi_072,"The artist's work speaks volumes, shouts from the canvas, and whispers secrets to those who listen.",True,personification,medium,3,,,same_type,"Speaks, shouts, whispers - all personification",multiple-instances,phase1
+multi_073,"The deadline looms like a dark cloud, threatens our peace, and casts a shadow over everything.",True,mixed,medium,3,,,different_types,"Simile (like cloud), personification (threatens, casts)",multiple-instances,phase1
+multi_074,"The innovation is revolutionary, groundbreaking as the wheel, and transformative in its impact.",True,mixed,medium,3,,,different_types,"Metaphor (revolutionary), simile (groundbreaking as wheel), metaphor (transformative)",multiple-instances,phase1
+multi_075,"The ocean is a vast library, each wave is a page, and every tide tells a story.",True,metaphor,hard,3,,,same_type,"Library, page, story - book metaphors",multiple-instances,phase1
+multi_076,"The pain stabbed him, cut deep, and left scars that would never fully heal.",True,metaphor,medium,3,,,same_type,"Stabbed, cut, scars - injury metaphors",multiple-instances,phase1
+multi_077,"The future beckons us forward, calls us to action, and promises rewards for the brave.",True,personification,medium,3,,,same_type,"Beckons, calls, promises - all personification",multiple-instances,phase1
+multi_078,"The network is a web, interconnected like neurons in a brain, and complex beyond comprehension.",True,mixed,medium,3,,,different_types,"Metaphor (web), simile (like neurons), hyperbole (beyond comprehension)",multiple-instances,phase1
+multi_079,"The tradition is a chain linking generations, a thread connecting past to present, and a bridge to the future.",True,metaphor,hard,3,,,same_type,"Chain, thread, bridge - connection metaphors",multiple-instances,phase1
+multi_080,"The virus mutates constantly, evolves rapidly, and adapts to every defense we create.",True,personification,medium,3,,,same_type,"Mutates, evolves, adapts - all personification",multiple-instances,phase1
+multi_081,"The landscape is a canvas, painted by nature, and framed by the horizon.",True,metaphor,medium,3,,,same_type,"Canvas, painted, framed - art metaphors",multiple-instances,phase1
+multi_082,"The strategy is flawed, weak as a house of cards, and doomed to fail.",True,mixed,medium,3,,,different_types,"Metaphor (flawed), simile (weak as house of cards), personification (doomed)",multiple-instances,phase1
+multi_083,"The crowd roared its approval, thundered its applause, and shook the stadium with its enthusiasm.",True,personification,medium,3,,,same_type,"Roared, thundered, shook - all personification",multiple-instances,phase1
+multi_084,"The solution is elegant, simple as a haiku, and powerful in its directness.",True,mixed,medium,3,,,different_types,"Metaphor (elegant), simile (simple as haiku), metaphor (powerful)",multiple-instances,phase1
+multi_085,"The organization is a pyramid, hierarchical in structure, and rigid in its operations.",True,metaphor,medium,3,,,same_type,"Pyramid, hierarchical, rigid - structure metaphors",multiple-instances,phase1
+multi_086,"The technology is obsolete, ancient as the dinosaurs, and destined for extinction.",True,mixed,medium,3,,,different_types,"Metaphor (obsolete), simile (ancient as dinosaurs), personification (destined)",multiple-instances,phase1
+multi_087,"The river of progress flows inexorably forward, sweeps away obstacles, and carves new paths.",True,metaphor,medium,3,,,same_type,"River, sweeps, carves - water metaphors",multiple-instances,phase1
+multi_088,"The argument is circular, repetitive as a broken record, and going nowhere.",True,mixed,medium,3,,,different_types,"Metaphor (circular), simile (repetitive as record), personification (going)",multiple-instances,phase1
+multi_089,"The brand is a beacon, shining brightly, and guiding customers to our products.",True,metaphor,medium,3,,,same_type,"Beacon, shining, guiding - light metaphors",multiple-instances,phase1
+multi_090,"The crisis is a crucible, testing our resolve, and forging us into something stronger.",True,metaphor,hard,3,,,same_type,"Crucible, testing, forging - metallurgy metaphors",multiple-instances,phase1
+multi_091,"The culture is a tapestry, woven from many threads, and rich in its diversity.",True,metaphor,medium,3,,,same_type,"Tapestry, woven, threads - textile metaphors",multiple-instances,phase1
+multi_092,"The plan is ambitious, bold as a lion, and risky in its scope.",True,mixed,medium,3,,,different_types,"Metaphor (ambitious), simile (bold as lion), metaphor (risky)",multiple-instances,phase1
+multi_093,"The system is broken, fractured like shattered glass, and beyond repair.",True,mixed,medium,3,,,different_types,"Metaphor (broken), simile (fractured like glass), hyperbole (beyond repair)",multiple-instances,phase1
+multi_094,"The movement is a tidal wave, unstoppable in its momentum, and sweeping everything before it.",True,metaphor,medium,3,,,same_type,"Tidal wave, unstoppable, sweeping - water metaphors",multiple-instances,phase1
+multi_095,"The discovery is a key, unlocking mysteries, and opening doors to new understanding.",True,metaphor,medium,3,,,same_type,"Key, unlocking, opening - access metaphors",multiple-instances,phase1
+multi_096,"The competition is fierce, cutthroat as a knife fight, and unforgiving of mistakes.",True,mixed,medium,3,,,different_types,"Metaphor (fierce), simile (cutthroat as knife fight), personification (unforgiving)",multiple-instances,phase1
+multi_097,"The ecosystem is a delicate balance, fragile as spun glass, and easily disrupted.",True,mixed,medium,3,,,different_types,"Metaphor (balance), simile (fragile as glass), personification (disrupted)",multiple-instances,phase1
+multi_098,"The narrative is a journey, winding through plot twists, and arriving at an unexpected destination.",True,metaphor,medium,3,,,same_type,"Journey, winding, arriving - travel metaphors",multiple-instances,phase1
+multi_099,"The pressure is mounting, building like steam in a kettle, and ready to explode.",True,mixed,medium,3,,,different_types,"Personification (mounting), simile (like steam), personification (ready to explode)",multiple-instances,phase1
+multi_100,"The legacy is a gift, passed down through generations, and treasured by all who receive it.",True,metaphor,medium,3,,,same_type,"Gift, passed down, treasured - inheritance metaphors",multiple-instances,phase1

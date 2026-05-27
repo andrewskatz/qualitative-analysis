@@ -1,0 +1,16 @@
+text_id,window_index,source,target,type,description
+1,0,heavy rain,flooding,caused,The heavy rain caused widespread flooding in the city.
+2,0,factory production,pollution levels,increased,Because the factory increased production pollution levels rose.
+3,0,temperatures,ice cream sales,correlates with,As temperatures rose ice cream sales increased.
+4,0,drought,crops,killed,The drought killed the crops.
+5,0,water heating,boiling,leads to,If you heat water to 100C it will boil.
+6,0,storm,barn,damaged,The storm damaged the barn.
+7,0,studying,better grades,associated with,Students who study more tend to get better grades.
+8,0,cost reduction,layoffs,motivated,In order to reduce costs the company laid off workers.
+9,0,medication,improvement,resulted in,The medication resulted in significant improvement.
+10,0,smoking,lung cancer,leads to,Smoking leads to lung cancer.
+11,0,traffic jam,late arrival,caused,Due to the traffic jam we arrived late.
+12,0,increased rainfall,bumper harvest,produced,The increased rainfall produced a bumper harvest.
+13,0,cybersecurity,secure systems,requires,Effective cybersecurity requires robust secure systems.
+14,0,high interest rates,inflation,reduces,Central banks raised rates to combat rising inflation. Higher rates effectively reduced the inflation rate.
+15,0,John,Mary,sibling of,John and Mary are brother and sister.
