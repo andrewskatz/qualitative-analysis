@@ -43,6 +43,12 @@ qualitative-analysis/
 │   └── entity_cli.py            # used by `qa entity ...` (~3.5k LOC)
 ├── tests/                       # pytest suite (29 test files, ~470 tests)
 ├── scripts/                     # standalone experiment scripts (not entry points)
+├── data/                        # sample inputs for hand-running the CLI (organized by pathway)
+│   ├── figurative/
+│   ├── relationships/
+│   ├── entity/
+│   ├── decisions/
+│   └── README.md                # what's in each file + what was deliberately not committed (IRB)
 ├── docs/
 │   ├── planning/                # design docs, audits, implementation plans (21 dirs)
 │   ├── progress-notes/          # dated progress notes (11 files)
@@ -61,6 +67,10 @@ qualitative-analysis/
 **Two doc directories, different purposes:**
 - `docs/` — design and audit history (carried with the package from the parent repo's `docs/planning/...` during extraction)
 - `_docs/` — operational team docs (handoffs, feature-dev plans, progress updates) following the convention used in your other research repos
+
+**Two data directories, different purposes:**
+- `tests/data/` — small fixtures wired into the pytest suite via mocks
+- `data/` — sample inputs for hand-running the CLI / demoing the package, organized by pathway. **Real participant data (interview transcripts, think-aloud protocols) is deliberately not committed** even though the repo is private — see `data/README.md`.
 
 ---
 
@@ -101,25 +111,30 @@ pytest                 # full suite; ~450 pass + skips for missing optional deps
 
 ## CLI Usage (the four pathways)
 
+The commands below use the sample data shipped in [`data/`](../../data/) so you can copy-paste directly. See [`data/README.md`](../../data/README.md) for what's in each file.
+
 ```bash
 # Figurative
-qa figurative detect transcripts.csv --model gpt-oss:120b
-qa fig map instances.csv --multi-level
+qa figurative detect data/figurative/paired-figurative-statements-20.csv \
+  --model gpt-oss:120b --output all
+qa fig map data/figurative/sample_instances.csv --multi-level
 qa fig normalize ...
 qa fig graph ...
 qa fig pipeline ...              # full detect → map → normalize → graph
 
 # Relationships
-qa relationships detect transcripts.csv --entities "Company,Person"
+qa relationships detect data/relationships/pilot_statements.csv \
+  --entities "Cause,Effect"
 qa rel verify ...                # LLM second-pass to filter hallucinated relationships
-qa rel causal ...                # classify polarity / certainty / explicitness
+qa rel causal data/relationships/expanded_statements.csv
 qa rel normalize ...
 qa rel graph ...
 
 # Entity (scoring along configurable dimensions)
-qa entity detect ...             # standalone entity extraction
+qa entity detect data/entity/sim-platform-15-participants_20260211_combined.csv
 qa entity prepare-scoring ...    # extracts entity-context pairs from rel detection windows
-qa entity score scored.csv --dimensions "social,ecological,technological"
+qa entity score data/entity/test_entities_scoring.csv \
+  --dimensions "social,ecological,technological"
 qa entity consolidate ...        # semantic dedup
 qa entity viz ...                # ternary plots, radars
 qa entity compare ...            # cross-participant distances
@@ -129,9 +144,9 @@ qa entity cluster ...            # hierarchical / kmeans / hdbscan + PCA
 qa entity report ...             # auto-markdown report
 
 # Decisions
-qa decisions detect transcripts.csv
+qa decisions detect data/decisions/ai_ml.csv
 qa dec normalize ...
-qa dec aggregate ...
+qa dec aggregate data/decisions/climate_change.csv
 qa dec viz ...
 ```
 
