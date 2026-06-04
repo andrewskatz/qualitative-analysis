@@ -295,7 +295,6 @@ A few open items worth raising in any successor's first session:
 2. **Should the package go public on GitHub** for citation purposes? Currently private. A methods-paper draft is in the parent's `publications-and-presentations/`.
 3. **Tagging cadence**: this is `v0.2.0`. The next bump should follow conventional rules — bug fixes → 0.2.1; new pathway features → 0.3.0; major API rework → 1.0.0.
 4. **The figurative pathway's `output/` directory** never made it across extraction (gitignored, not in history). Pathway-specific output now lives wherever you point `--output-dir` flags. If you want a canonical place, set up an `output/` (still gitignored) in the new repo's working tree.
-5. **The `_docs/feature-dev/` and `_docs/progress-updates/` dirs are empty** (only `.gitkeep`). Start populating them on the next feature/progress entry.
 
 ---
 
